@@ -1,0 +1,11 @@
+{
+  "name": "pixel-analytics/backend",
+  "description": "PixelAnalytics backend",
+  "type": "project",
+  "require": {},
+  "autoload": {
+    "psr-4": {
+      "PixelAnalytics\\": "src/"
+    }
+  }
+}

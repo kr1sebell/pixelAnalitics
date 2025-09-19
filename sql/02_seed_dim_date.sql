@@ -1,0 +1,36 @@
+-- Populate dim_date with a rolling five year calendar
+SET @start_date = DATE_SUB(CURDATE(), INTERVAL 365 DAY);
+SET @end_date = DATE_ADD(CURDATE(), INTERVAL 5 YEAR);
+SET @days = DATEDIFF(@end_date, @start_date) + 1;
+
+DELETE FROM dim_date;
+
+INSERT INTO dim_date (
+  date_sk,
+  date,
+  year,
+  month,
+  week,
+  dow,
+  is_weekend,
+  is_holiday_ru
+)
+SELECT
+  seq.seq_id AS date_sk,
+  DATE_ADD(@start_date, INTERVAL seq.seq_id - 1 DAY) AS date,
+  YEAR(DATE_ADD(@start_date, INTERVAL seq.seq_id - 1 DAY)) AS year,
+  MONTH(DATE_ADD(@start_date, INTERVAL seq.seq_id - 1 DAY)) AS month,
+  WEEK(DATE_ADD(@start_date, INTERVAL seq.seq_id - 1 DAY), 1) AS week,
+  DAYOFWEEK(DATE_ADD(@start_date, INTERVAL seq.seq_id - 1 DAY)) AS dow,
+  IF(DAYOFWEEK(DATE_ADD(@start_date, INTERVAL seq.seq_id - 1 DAY)) IN (1,7), 1, 0) AS is_weekend,
+  IF(DATE_FORMAT(DATE_ADD(@start_date, INTERVAL seq.seq_id - 1 DAY), '%m-%d') IN ('01-01','01-07','02-23','03-08','05-01','05-09','06-12','11-04'), 1, 0) AS is_holiday_ru
+FROM (
+  SELECT @row := @row + 1 AS seq_id
+  FROM
+    (SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0) t1,
+    (SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0) t2,
+    (SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0) t3,
+    (SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0 UNION ALL SELECT 0) t4,
+    (SELECT @row := 0) init
+  LIMIT @days
+) AS seq;

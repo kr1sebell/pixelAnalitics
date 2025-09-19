@@ -1,0 +1,4 @@
+# Ночной цикл (время сервера)
+0 3 * * *  /usr/bin/php /var/www/pixel-analytics/cli/etl_extract.php >> /var/log/pixel-analytics/etl_extract.log 2>&1
+10 3 * * * /usr/bin/php /var/www/pixel-analytics/cli/etl_vk_update.php >> /var/log/pixel-analytics/etl_vk_update.log 2>&1
+30 3 * * * /usr/bin/php /var/www/pixel-analytics/cli/etl_build_summaries.php >> /var/log/pixel-analytics/etl_build_summaries.log 2>&1
