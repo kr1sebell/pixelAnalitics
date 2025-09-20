@@ -23,7 +23,7 @@ $prevEnd = (clone $start)->modify('-1 day');
 $prevStart = (clone $prevEnd)->modify('-' . ($periodLength - 1) . ' days');
 
 $dashboardService = new MarketingDashboardService($analytics);
-$availableStatuses = $dashboardService->getAvailableStatuses();
+$availableStatusesFromDb = $dashboardService->getAvailableStatuses();
 
 $statusLabels = [
     1 => 'Оплачен',
@@ -32,15 +32,25 @@ $statusLabels = [
     0 => 'Не оплачен',
 ];
 
-if ($availableStatuses === []) {
-    $availableStatuses = array_keys($statusLabels);
+// Всегда показываем ключевые статусы первыми, даже если их нет в текущей выборке.
+$preferredStatusOrder = [1, 6, 3, 0];
+$statusOrder = [];
+foreach (array_merge($preferredStatusOrder, $availableStatusesFromDb) as $statusValue) {
+    $statusInt = (int) $statusValue;
+    if (!in_array($statusInt, $statusOrder, true)) {
+        $statusOrder[] = $statusInt;
+    }
+}
+
+if ($statusOrder === []) {
+    $statusOrder = array_keys($statusLabels);
 }
 
 $statusSummary = $dashboardService->getStatusSummary($start, $end);
 
 $statusOptions = [];
 $statusStats = [];
-foreach ($availableStatuses as $statusValue) {
+foreach ($statusOrder as $statusValue) {
     $statusInt = (int) $statusValue;
     $statusOptions[$statusInt] = $statusLabels[$statusInt] ?? ('Статус #' . $statusInt);
     $summary = $statusSummary[$statusInt] ?? ['total_orders' => 0, 'total_revenue' => 0.0];
@@ -48,17 +58,6 @@ foreach ($availableStatuses as $statusValue) {
         'total_orders' => (int) ($summary['total_orders'] ?? 0),
         'total_revenue' => (float) ($summary['total_revenue'] ?? 0),
     ];
-}
-
-if ($statusOptions === []) {
-    foreach (array_keys($statusLabels) as $statusValue) {
-        $statusOptions[$statusValue] = $statusLabels[$statusValue];
-        $summary = $statusSummary[$statusValue] ?? ['total_orders' => 0, 'total_revenue' => 0.0];
-        $statusStats[$statusValue] = [
-            'total_orders' => (int) ($summary['total_orders'] ?? 0),
-            'total_revenue' => (float) ($summary['total_revenue'] ?? 0),
-        ];
-    }
 }
 
 $preferredDefaults = [1, 6, 3, 0];
