@@ -101,11 +101,14 @@ CREATE TABLE IF NOT EXISTS analytics_orders (
     order_datetime DATETIME NOT NULL,
     status INT NOT NULL,
     payment_type INT NOT NULL,
+    order_type ENUM('delivery','pickup') NULL,
     total_sum DECIMAL(10,2) NOT NULL,
     total_sum_discounted DECIMAL(10,2) NULL,
     total_items INT NOT NULL,
     city_id INT NULL,
     city_name VARCHAR(191) NULL,
+    latitude DECIMAL(10,7) NULL,
+    longitude DECIMAL(10,7) NULL,
     repeat_order TINYINT(1) DEFAULT 0,
     order_number INT DEFAULT 1,
     weekday TINYINT NOT NULL,
@@ -117,7 +120,33 @@ CREATE TABLE IF NOT EXISTS analytics_orders (
 SQL;
         $this->analytics->query($sql);
 
-        //$this->analytics->query('ALTER TABLE analytics_orders ADD COLUMN IF NOT EXISTS city_name VARCHAR(191) NULL AFTER city_id');
+        $this->ensureColumnExists(
+            'analytics_orders',
+            'order_type',
+            "ENUM('delivery','pickup') NULL AFTER payment_type"
+        );
+        $this->ensureColumnExists(
+            'analytics_orders',
+            'latitude',
+            'DECIMAL(10,7) NULL'
+        );
+        $this->ensureColumnExists(
+            'analytics_orders',
+            'longitude',
+            'DECIMAL(10,7) NULL'
+        );
+    }
+
+    private function ensureColumnExists(string $table, string $column, string $definition): void
+    {
+        $columnExists = $this->analytics->getRow(
+            sprintf('SHOW COLUMNS FROM `%s` LIKE ?s', $table),
+            [$column]
+        );
+
+        if (!$columnExists) {
+            $this->analytics->query(sprintf('ALTER TABLE `%s` ADD COLUMN `%s` %s', $table, $column, $definition));
+        }
     }
 
     private function createOrderItemsTable(): void
