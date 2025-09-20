@@ -29,7 +29,7 @@ $statusLabels = [
     1 => 'Оплачен',
     6 => 'Перебит',
     3 => 'Отменён',
-    0 => 'Черновик',
+    0 => 'Не оплачен',
 ];
 
 if ($availableStatuses === []) {
@@ -42,30 +42,37 @@ foreach ($availableStatuses as $statusValue) {
     $statusOptions[$statusInt] = $statusLabels[$statusInt] ?? ('Статус #' . $statusInt);
 }
 
-$defaultStatuses = array_values(array_intersect([1, 6], array_keys($statusOptions)));
-if ($defaultStatuses === []) {
-    $defaultStatuses = array_keys($statusOptions);
+$preferredDefaults = [1, 6];
+$defaultStatus = null;
+foreach ($preferredDefaults as $preferred) {
+    if (array_key_exists($preferred, $statusOptions)) {
+        $defaultStatus = $preferred;
+        break;
+    }
+}
+if ($defaultStatus === null) {
+    $defaultStatus = array_key_first($statusOptions);
 }
 
-$statusParam = $_GET['status'] ?? $defaultStatuses;
-if (!is_array($statusParam)) {
-    $statusParam = [$statusParam];
+$statusParam = $_GET['status'] ?? $defaultStatus;
+if (is_array($statusParam)) {
+    $statusParam = reset($statusParam);
 }
 
-$selectedStatuses = [];
-foreach ($statusParam as $statusValue) {
-    if (is_numeric($statusValue)) {
-        $statusInt = (int) $statusValue;
-        if (array_key_exists($statusInt, $statusOptions)) {
-            $selectedStatuses[] = $statusInt;
+$selectedStatus = $defaultStatus;
+if ($statusParam !== null && $statusParam !== '') {
+    if (is_numeric($statusParam)) {
+        $candidate = (int) $statusParam;
+        if (array_key_exists($candidate, $statusOptions)) {
+            $selectedStatus = $candidate;
         }
     }
 }
-$selectedStatuses = array_values(array_unique($selectedStatuses));
-if ($selectedStatuses === []) {
-    $selectedStatuses = $defaultStatuses;
+
+$selectedStatuses = $selectedStatus !== null ? [$selectedStatus] : [];
+if ($selectedStatuses !== []) {
+    sort($selectedStatuses);
 }
-sort($selectedStatuses);
 
 $cityMap = $dashboardService->getCityMap($selectedStatuses);
 

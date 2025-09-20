@@ -25,6 +25,8 @@ $summaryMetrics = [
 $chartConfigs = [];
 $currentPeriodDays = $start->diff($end)->days + 1;
 $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
+$selectedStatusValue = isset($selectedStatuses[0]) ? (int) $selectedStatuses[0] : null;
+$positiveDeltaIsGood = $selectedStatusValue !== 3;
 ?>
 <!doctype html>
 <html lang="ru">
@@ -60,34 +62,32 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
             <input type="date" class="form-control" name="end" value="<?=htmlspecialchars($end->format('Y-m-d'))?>">
         </div>
         <div class="col-md-4">
-            <label class="form-label d-block">Статусы заказов</label>
+            <label class="form-label d-block">Статус заказов</label>
             <div class="d-flex flex-wrap status-select-group">
                 <?php foreach ($statusOptions as $statusValue => $statusLabel): ?>
                     <?php $statusId = 'status-' . $statusValue; ?>
                     <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="checkbox" name="status[]" value="<?=htmlspecialchars((string) $statusValue)?>" id="<?=htmlspecialchars($statusId)?>" <?=in_array($statusValue, $selectedStatuses, true) ? 'checked' : ''?>>
+                        <input class="form-check-input" type="radio" name="status" value="<?=htmlspecialchars((string) $statusValue)?>" id="<?=htmlspecialchars($statusId)?>" <?=$selectedStatusValue === (int) $statusValue ? 'checked' : ''?>>
                         <label class="form-check-label" for="<?=htmlspecialchars($statusId)?>">
                             <?=htmlspecialchars($statusLabel)?>
                         </label>
                     </div>
                 <?php endforeach; ?>
             </div>
-            <div class="form-text">Показатели рассчитываются по выбранным статусам.</div>
+            <div class="form-text">Показатели рассчитываются по выбранному статусу.</div>
         </div>
         <div class="col-md-2 d-flex align-items-end">
             <button class="btn btn-primary w-100">Обновить</button>
         </div>
     </form>
 
-    <?php if (!empty($selectedStatuses)): ?>
+    <?php if ($selectedStatusValue !== null): ?>
         <div class="mb-4">
             <div class="d-flex flex-wrap align-items-center gap-2">
-                <span class="text-muted small">Выбраны статусы:</span>
-                <?php foreach ($selectedStatuses as $statusValue): ?>
-                    <span class="badge bg-secondary">
-                        <?=htmlspecialchars($statusOptions[$statusValue] ?? ('Статус #' . $statusValue))?>
-                    </span>
-                <?php endforeach; ?>
+                <span class="text-muted small">Выбран статус:</span>
+                <span class="badge bg-secondary">
+                    <?=htmlspecialchars($statusOptions[$selectedStatusValue] ?? ('Статус #' . $selectedStatusValue))?>
+                </span>
             </div>
         </div>
     <?php endif; ?>
@@ -135,7 +135,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                         <h6><?=htmlspecialchars($metric['label'])?></h6>
                         <strong><?=$formatValue($currentValue, $metric['format'])?></strong>
 
-                        <div class="small <?=MarketingDashboardFormatter::deltaClass($delta)?> mt-2">
+                        <div class="small <?=MarketingDashboardFormatter::deltaClass($delta, $positiveDeltaIsGood)?> mt-2">
                             Было: <?=$formatValue($previousValue, $metric['format'])?>
                             (<?=MarketingDashboardFormatter::formatDelta($delta)?>)
                         </div>
@@ -152,9 +152,9 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
     <ul class="nav nav-tabs" id="segmentTabs" role="tablist">
         <?php $first = true; foreach ($allMetrics as $dim => $block): ?>
             <li class="nav-item" role="presentation">
-                <button class="nav-link <?=$first ? 'active' : ''?>" id="tab-<?=$dim?>" data-bs-toggle="tab" data-bs-target="#pane-<?=$dim?>" type="button" role="tab">
+                <a class="nav-link <?=$first ? 'active' : ''?>" id="tab-<?=$dim?>" data-bs-toggle="tab" href="#pane-<?=$dim?>" role="tab" aria-controls="pane-<?=$dim?>" aria-selected="<?=$first ? 'true' : 'false'?>">
                     <?=htmlspecialchars($dimensionList[$dim]['label'])?>
-                </button>
+                </a>
             </li>
             <?php $first = false; endforeach; ?>
     </ul>
@@ -212,7 +212,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                                             <th>Выручка</th>
                                             <td>
                                                 <?=number_format((float) ($metricRow['total_revenue'] ?? 0), 0, ',', ' ')?> ₽<br>
-                                                <small class="<?=MarketingDashboardFormatter::deltaClass($revenueDelta)?>">
+                                                <small class="<?=MarketingDashboardFormatter::deltaClass($revenueDelta, $positiveDeltaIsGood)?>">
                                                     Было: <?=number_format((float) ($prev['total_revenue'] ?? 0), 0, ',', ' ')?> ₽
                                                     (<?=MarketingDashboardFormatter::formatDelta($revenueDelta)?>)
                                                 </small>
@@ -222,7 +222,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                                             <th>Заказы</th>
                                             <td>
                                                 <?=number_format((float) ($metricRow['total_orders'] ?? 0), 0, ',', ' ')?><br>
-                                                <small class="<?=MarketingDashboardFormatter::deltaClass($ordersDelta)?>">
+                                                <small class="<?=MarketingDashboardFormatter::deltaClass($ordersDelta, $positiveDeltaIsGood)?>">
                                                     Было: <?=number_format((float) ($prev['total_orders'] ?? 0), 0, ',', ' ')?>
                                                     (<?=MarketingDashboardFormatter::formatDelta($ordersDelta)?>)
                                                 </small>
@@ -232,7 +232,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                                             <th>Клиенты</th>
                                             <td>
                                                 <?=number_format((float) ($metricRow['total_customers'] ?? 0), 0, ',', ' ')?><br>
-                                                <small class="<?=MarketingDashboardFormatter::deltaClass($customersDelta)?>">
+                                                <small class="<?=MarketingDashboardFormatter::deltaClass($customersDelta, $positiveDeltaIsGood)?>">
                                                     Было: <?=number_format((float) ($prev['total_customers'] ?? 0), 0, ',', ' ')?>
                                                     (<?=MarketingDashboardFormatter::formatDelta($customersDelta)?>)
                                                 </small>
@@ -242,7 +242,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                                             <th>Средний чек</th>
                                             <td>
                                                 <?=number_format((float) ($metricRow['avg_receipt'] ?? 0), 0, ',', ' ')?> ₽<br>
-                                                <small class="<?=MarketingDashboardFormatter::deltaClass($avgReceiptDelta)?>">
+                                                <small class="<?=MarketingDashboardFormatter::deltaClass($avgReceiptDelta, $positiveDeltaIsGood)?>">
                                                     Было: <?=number_format((float) ($prev['avg_receipt'] ?? 0), 0, ',', ' ')?> ₽
                                                     (<?=MarketingDashboardFormatter::formatDelta($avgReceiptDelta)?>)
                                                 </small>
@@ -252,7 +252,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                                             <th>Новые клиенты</th>
                                             <td>
                                                 <?=number_format((float) ($metricRow['new_customers'] ?? 0), 0, ',', ' ')?><br>
-                                                <small class="<?=MarketingDashboardFormatter::deltaClass($newCustomersDelta)?>">
+                                                <small class="<?=MarketingDashboardFormatter::deltaClass($newCustomersDelta, $positiveDeltaIsGood)?>">
                                                     Было: <?=number_format((float) ($prev['new_customers'] ?? 0), 0, ',', ' ')?>
                                                     (<?=MarketingDashboardFormatter::formatDelta($newCustomersDelta)?>)
                                                 </small>
@@ -262,7 +262,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                                             <th>Повторные клиенты</th>
                                             <td>
                                                 <?=number_format((float) ($metricRow['repeat_customers'] ?? 0), 0, ',', ' ')?><br>
-                                                <small class="<?=MarketingDashboardFormatter::deltaClass($repeatCustomersDelta)?>">
+                                                <small class="<?=MarketingDashboardFormatter::deltaClass($repeatCustomersDelta, $positiveDeltaIsGood)?>">
                                                     Было: <?=number_format((float) ($prev['repeat_customers'] ?? 0), 0, ',', ' ')?>
                                                     (<?=MarketingDashboardFormatter::formatDelta($repeatCustomersDelta)?>)
                                                 </small>
@@ -272,7 +272,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                                             <th>Частота заказов</th>
                                             <td>
                                                 <?=number_format((float) ($metricRow['avg_frequency'] ?? 0), 2, ',', ' ')?><br>
-                                                <small class="<?=MarketingDashboardFormatter::deltaClass($frequencyDelta)?>">
+                                                <small class="<?=MarketingDashboardFormatter::deltaClass($frequencyDelta, $positiveDeltaIsGood)?>">
                                                     Было: <?=number_format((float) ($prev['avg_frequency'] ?? 0), 2, ',', ' ')?>
                                                     (<?=MarketingDashboardFormatter::formatDelta($frequencyDelta)?>)
                                                 </small>
