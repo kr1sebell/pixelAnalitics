@@ -44,18 +44,18 @@ class MarketingDashboardFormatter
         return round((($current ?? 0) - $previous) / $previous * 100, 1);
     }
 
-    public static function deltaClass(?float $delta): string
+    public static function deltaClass(?float $delta, bool $positiveIsGood = true): string
     {
         if ($delta === null) {
             return 'delta-null';
         }
 
         if ($delta > 0) {
-            return 'delta-up';
+            return $positiveIsGood ? 'delta-up' : 'delta-down';
         }
 
         if ($delta < 0) {
-            return 'delta-down';
+            return $positiveIsGood ? 'delta-down' : 'delta-up';
         }
 
         return 'delta-null';

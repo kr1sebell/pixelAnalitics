@@ -25,11 +25,13 @@ class MarketingDashboardService
     }
 
     /**
+     * @param array<int, int> $statuses
      * @return array<int, array<string, mixed>>
      */
-    public function getMetrics(string $dimension, DateTime $start, DateTime $end): array
+    public function getMetrics(string $dimension, DateTime $start, DateTime $end, array $statuses): array
     {
         $field = $this->resolveField($dimension);
+        [$statusSql, $statusParams] = $this->buildStatusClause('o', $statuses);
 
         $rows = $this->analytics->getAll(
             "SELECT
@@ -57,10 +59,10 @@ class MarketingDashboardService
                 ),0) AS avg_frequency_month
              FROM analytics_orders o
              JOIN analytics_users u ON u.source_user_id=o.source_user_id
-            WHERE o.order_date BETWEEN ?s AND ?s
+            WHERE o.order_date BETWEEN ?s AND ?s{$statusSql}
             GROUP BY dimension_value
             ORDER BY total_revenue DESC",
-            [
+            array_merge([
                 $start->format('Y-m-d'),
                 $end->format('Y-m-d'),
                 $start->format('Y-m-d'),
@@ -68,7 +70,7 @@ class MarketingDashboardService
                 $start->format('Y-m-d'),
                 $start->format('Y-m-d'),
                 $end->format('Y-m-d'),
-            ]
+            ], $statusParams)
         );
 
         foreach ($rows as &$row) {
@@ -88,10 +90,12 @@ class MarketingDashboardService
     }
 
     /**
+     * @param array<int, int> $statuses
      * @return array<string, mixed>
      */
-    public function getTotals(DateTime $start, DateTime $end): array
+    public function getTotals(DateTime $start, DateTime $end, array $statuses): array
     {
+        [$statusSql, $statusParams] = $this->buildStatusClause('o', $statuses);
         $row = $this->analytics->getRow(
             "SELECT
                 COUNT(o.id) AS total_orders,
@@ -109,14 +113,14 @@ class MarketingDashboardService
                 COALESCE(ROUND(COUNT(o.id)/NULLIF(COUNT(DISTINCT o.source_user_id),0),2),0) AS avg_frequency
              FROM analytics_orders o
              JOIN analytics_users u ON u.source_user_id=o.source_user_id
-            WHERE o.order_date BETWEEN ?s AND ?s",
-            [
+            WHERE o.order_date BETWEEN ?s AND ?s{$statusSql}",
+            array_merge([
                 $start->format('Y-m-d'),
                 $end->format('Y-m-d'),
                 $start->format('Y-m-d'),
                 $start->format('Y-m-d'),
                 $end->format('Y-m-d'),
-            ]
+            ], $statusParams)
         );
 
         if (!$row) {
@@ -143,11 +147,13 @@ class MarketingDashboardService
     }
 
     /**
+     * @param array<int, int> $statuses
      * @return array<string, array<int, array<string, float|int|string>>>
      */
-    public function getTopProducts(string $dimension, DateTime $start, DateTime $end): array
+    public function getTopProducts(string $dimension, DateTime $start, DateTime $end, array $statuses): array
     {
         $field = $this->resolveField($dimension);
+        [$statusSql, $statusParams] = $this->buildStatusClause('o', $statuses);
 
         $rows = $this->analytics->getAll(
             "SELECT
@@ -158,10 +164,10 @@ class MarketingDashboardService
              FROM analytics_order_items i
              JOIN analytics_orders o ON o.id=i.analytics_order_id
              JOIN analytics_users u ON u.source_user_id=o.source_user_id
-            WHERE o.order_date BETWEEN ?s AND ?s
+            WHERE o.order_date BETWEEN ?s AND ?s{$statusSql}
             GROUP BY dimension_value, i.product_title
             ORDER BY revenue DESC",
-            [$start->format('Y-m-d'), $end->format('Y-m-d')]
+            array_merge([$start->format('Y-m-d'), $end->format('Y-m-d')], $statusParams)
         );
 
         $result = [];
@@ -178,11 +184,16 @@ class MarketingDashboardService
     }
 
     /**
+     * @param array<int, int> $statuses
      * @return array<int, string>
      */
-    public function getCityMap(): array
+    public function getCityMap(array $statuses): array
     {
-        $rows = $this->analytics->getAll('SELECT DISTINCT city_id,city_name FROM analytics_orders WHERE city_id IS NOT NULL');
+        [$statusSql, $statusParams] = $this->buildStatusClause('o', $statuses);
+        $rows = $this->analytics->getAll(
+            'SELECT DISTINCT o.city_id,o.city_name FROM analytics_orders o WHERE o.city_id IS NOT NULL' . $statusSql,
+            $statusParams
+        );
         $map = [];
         foreach ($rows as $row) {
             if ($row['city_id']) {
@@ -192,6 +203,60 @@ class MarketingDashboardService
         }
 
         return $map;
+    }
+
+    /**
+     * @return array<int, array{total_orders: int, total_revenue: float}>
+     */
+    public function getStatusSummary(DateTime $start, DateTime $end): array
+    {
+        $rows = $this->analytics->getAll(
+            'SELECT status, COUNT(*) AS total_orders, SUM(total_sum) AS total_revenue
+             FROM analytics_orders
+            WHERE order_date BETWEEN ?s AND ?s
+            GROUP BY status',
+            [$start->format('Y-m-d'), $end->format('Y-m-d')]
+        );
+
+        $summary = [];
+        foreach ($rows as $row) {
+            $status = (int) ($row['status'] ?? 0);
+            $summary[$status] = [
+                'total_orders' => (int) ($row['total_orders'] ?? 0),
+                'total_revenue' => (float) ($row['total_revenue'] ?? 0),
+            ];
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function getAvailableStatuses(): array
+    {
+        $rows = $this->analytics->getCol('SELECT DISTINCT status FROM analytics_orders ORDER BY status');
+        if (!$rows) {
+            return [];
+        }
+
+        return array_map(static fn ($value): int => (int) $value, $rows);
+    }
+
+    /**
+     * @param array<int, int> $statuses
+     * @return array{0: string, 1: array<int, mixed>}
+     */
+    private function buildStatusClause(string $alias, array $statuses): array
+    {
+        $clean = array_values(array_unique(array_map(static fn ($value): int => (int) $value, $statuses)));
+        sort($clean);
+
+        if ($clean === []) {
+            return ['', []];
+        }
+
+        return [sprintf(' AND %s.status IN (?a)', $alias), [$clean]];
     }
 
     private function resolveField(string $dimension): string
