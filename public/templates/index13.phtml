@@ -27,6 +27,10 @@ $currentPeriodDays = $start->diff($end)->days + 1;
 $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
 $selectedStatusValue = isset($selectedStatuses[0]) ? (int) $selectedStatuses[0] : null;
 $positiveDeltaIsGood = $selectedStatusValue !== 3;
+$selectedStatusStats = $selectedStatusValue !== null
+    ? ($statusStats[$selectedStatusValue] ?? ['total_orders' => 0, 'total_revenue' => 0.0])
+    : ['total_orders' => 0, 'total_revenue' => 0.0];
+$statusHasData = ($selectedStatusStats['total_orders'] ?? 0) > 0;
 ?>
 <!doctype html>
 <html lang="ru">
@@ -46,6 +50,8 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
         .summary-chart { position: relative; height: 120px; }
         .summary-chart canvas { max-height: 120px; }
         .status-select-group { gap: 0.75rem; }
+        .status-select-group .form-check { align-items: flex-start; }
+        .status-select-group .status-meta { display:block; font-size:0.78rem; color:#6c757d; }
     </style>
 </head>
 <body class="bg-light p-3">
@@ -65,11 +71,18 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
             <label class="form-label d-block">Статус заказов</label>
             <div class="d-flex flex-wrap status-select-group">
                 <?php foreach ($statusOptions as $statusValue => $statusLabel): ?>
-                    <?php $statusId = 'status-' . $statusValue; ?>
+                    <?php
+                    $statusId = 'status-' . $statusValue;
+                    $stats = $statusStats[$statusValue] ?? ['total_orders' => 0, 'total_revenue' => 0.0];
+                    ?>
                     <div class="form-check form-check-inline">
                         <input class="form-check-input" type="radio" name="status" value="<?=htmlspecialchars((string) $statusValue)?>" id="<?=htmlspecialchars($statusId)?>" <?=$selectedStatusValue === (int) $statusValue ? 'checked' : ''?>>
                         <label class="form-check-label" for="<?=htmlspecialchars($statusId)?>">
-                            <?=htmlspecialchars($statusLabel)?>
+                            <span><?=htmlspecialchars($statusLabel)?></span>
+                            <span class="status-meta">
+                                <?=number_format((float) ($stats['total_revenue'] ?? 0), 0, ',', ' ')?> ₽ ·
+                                <?=number_format((int) ($stats['total_orders'] ?? 0), 0, ',', ' ')?> заказов
+                            </span>
                         </label>
                     </div>
                 <?php endforeach; ?>
@@ -88,7 +101,16 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
                 <span class="badge bg-secondary">
                     <?=htmlspecialchars($statusOptions[$selectedStatusValue] ?? ('Статус #' . $selectedStatusValue))?>
                 </span>
+                <span class="text-muted small">
+                    <?=number_format((int) ($selectedStatusStats['total_orders'] ?? 0), 0, ',', ' ')?> заказов ·
+                    <?=number_format((float) ($selectedStatusStats['total_revenue'] ?? 0), 0, ',', ' ')?> ₽
+                </span>
             </div>
+            <?php if (!$statusHasData): ?>
+                <div class="alert alert-warning mt-3 mb-0">
+                    За выбранный период нет заказов с таким статусом. Попробуйте выбрать другой статус, чтобы увидеть сегменты и диаграммы.
+                </div>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 
@@ -177,8 +199,13 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
             ];
             ?>
             <div class="tab-pane fade <?=$first ? 'show active' : ''?>" id="pane-<?=$dim?>" role="tabpanel">
-                <div class="row g-3">
-                    <?php foreach ($block['current'] as $metricRow): ?>
+                <?php if (empty($block['current'])): ?>
+                    <div class="alert alert-info">
+                        Нет данных по этому сегменту для выбранного статуса и периода.
+                    </div>
+                <?php else: ?>
+                    <div class="row g-3">
+                        <?php foreach ($block['current'] as $metricRow): ?>
                         <?php
                         $value = $metricRow['dimension_value'];
                         $prev = $previousMap[$value] ?? $defaultPrev;
@@ -302,8 +329,9 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
                                 </div>
                             </div>
                         </div>
-                    <?php endforeach; ?>
-                </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
             <?php $first = false; endforeach; ?>
     </div>

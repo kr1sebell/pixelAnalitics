@@ -206,6 +206,31 @@ class MarketingDashboardService
     }
 
     /**
+     * @return array<int, array{total_orders: int, total_revenue: float}>
+     */
+    public function getStatusSummary(DateTime $start, DateTime $end): array
+    {
+        $rows = $this->analytics->getAll(
+            'SELECT status, COUNT(*) AS total_orders, SUM(total_sum) AS total_revenue
+             FROM analytics_orders
+            WHERE order_date BETWEEN ?s AND ?s
+            GROUP BY status',
+            [$start->format('Y-m-d'), $end->format('Y-m-d')]
+        );
+
+        $summary = [];
+        foreach ($rows as $row) {
+            $status = (int) ($row['status'] ?? 0);
+            $summary[$status] = [
+                'total_orders' => (int) ($row['total_orders'] ?? 0),
+                'total_revenue' => (float) ($row['total_revenue'] ?? 0),
+            ];
+        }
+
+        return $summary;
+    }
+
+    /**
      * @return array<int, int>
      */
     public function getAvailableStatuses(): array

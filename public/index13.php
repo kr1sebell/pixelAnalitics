@@ -36,25 +36,64 @@ if ($availableStatuses === []) {
     $availableStatuses = array_keys($statusLabels);
 }
 
+$statusSummary = $dashboardService->getStatusSummary($start, $end);
+
 $statusOptions = [];
+$statusStats = [];
 foreach ($availableStatuses as $statusValue) {
     $statusInt = (int) $statusValue;
     $statusOptions[$statusInt] = $statusLabels[$statusInt] ?? ('Статус #' . $statusInt);
+    $summary = $statusSummary[$statusInt] ?? ['total_orders' => 0, 'total_revenue' => 0.0];
+    $statusStats[$statusInt] = [
+        'total_orders' => (int) ($summary['total_orders'] ?? 0),
+        'total_revenue' => (float) ($summary['total_revenue'] ?? 0),
+    ];
 }
 
-$preferredDefaults = [1, 6];
-$defaultStatus = null;
-foreach ($preferredDefaults as $preferred) {
-    if (array_key_exists($preferred, $statusOptions)) {
-        $defaultStatus = $preferred;
-        break;
+if ($statusOptions === []) {
+    foreach (array_keys($statusLabels) as $statusValue) {
+        $statusOptions[$statusValue] = $statusLabels[$statusValue];
+        $summary = $statusSummary[$statusValue] ?? ['total_orders' => 0, 'total_revenue' => 0.0];
+        $statusStats[$statusValue] = [
+            'total_orders' => (int) ($summary['total_orders'] ?? 0),
+            'total_revenue' => (float) ($summary['total_revenue'] ?? 0),
+        ];
     }
 }
-if ($defaultStatus === null) {
-    $defaultStatus = array_key_first($statusOptions);
+
+$preferredDefaults = [1, 6, 3, 0];
+$defaultStatus = null;
+if ($statusOptions !== []) {
+    foreach ($preferredDefaults as $preferred) {
+        if (!array_key_exists($preferred, $statusOptions)) {
+            continue;
+        }
+
+        if (($statusStats[$preferred]['total_orders'] ?? 0) > 0) {
+            $defaultStatus = $preferred;
+            break;
+        }
+
+        if ($defaultStatus === null) {
+            $defaultStatus = $preferred;
+        }
+    }
+
+    if ($defaultStatus !== null && ($statusStats[$defaultStatus]['total_orders'] ?? 0) === 0) {
+        foreach ($statusOptions as $statusValue => $_label) {
+            if (($statusStats[$statusValue]['total_orders'] ?? 0) > 0) {
+                $defaultStatus = $statusValue;
+                break;
+            }
+        }
+    }
+
+    if ($defaultStatus === null) {
+        $defaultStatus = array_key_first($statusOptions);
+    }
 }
 
-$statusParam = $_GET['status'] ?? $defaultStatus;
+$statusParam = $_GET['status'] ?? null;
 if (is_array($statusParam)) {
     $statusParam = reset($statusParam);
 }
@@ -67,6 +106,10 @@ if ($statusParam !== null && $statusParam !== '') {
             $selectedStatus = $candidate;
         }
     }
+}
+
+if ($selectedStatus === null && $statusOptions !== []) {
+    $selectedStatus = array_key_first($statusOptions);
 }
 
 $selectedStatuses = $selectedStatus !== null ? [$selectedStatus] : [];
