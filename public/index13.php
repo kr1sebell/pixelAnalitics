@@ -23,7 +23,7 @@ $prevEnd = (clone $start)->modify('-1 day');
 $prevStart = (clone $prevEnd)->modify('-' . ($periodLength - 1) . ' days');
 
 $dashboardService = new MarketingDashboardService($analytics);
-$availableStatuses = $dashboardService->getAvailableStatuses();
+$availableStatusesFromDb = $dashboardService->getAvailableStatuses();
 
 $statusLabels = [
     1 => 'Оплачен',
@@ -32,29 +32,67 @@ $statusLabels = [
     0 => 'Не оплачен',
 ];
 
-if ($availableStatuses === []) {
-    $availableStatuses = array_keys($statusLabels);
+// Всегда показываем ключевые статусы первыми, даже если их нет в текущей выборке.
+$preferredStatusOrder = [1, 6, 3, 0];
+$statusOrder = [];
+foreach (array_merge($preferredStatusOrder, $availableStatusesFromDb) as $statusValue) {
+    $statusInt = (int) $statusValue;
+    if (!in_array($statusInt, $statusOrder, true)) {
+        $statusOrder[] = $statusInt;
+    }
 }
+
+if ($statusOrder === []) {
+    $statusOrder = array_keys($statusLabels);
+}
+
+$statusSummary = $dashboardService->getStatusSummary($start, $end);
 
 $statusOptions = [];
-foreach ($availableStatuses as $statusValue) {
+$statusStats = [];
+foreach ($statusOrder as $statusValue) {
     $statusInt = (int) $statusValue;
     $statusOptions[$statusInt] = $statusLabels[$statusInt] ?? ('Статус #' . $statusInt);
+    $summary = $statusSummary[$statusInt] ?? ['total_orders' => 0, 'total_revenue' => 0.0];
+    $statusStats[$statusInt] = [
+        'total_orders' => (int) ($summary['total_orders'] ?? 0),
+        'total_revenue' => (float) ($summary['total_revenue'] ?? 0),
+    ];
 }
 
-$preferredDefaults = [1, 6];
+$preferredDefaults = [1, 6, 3, 0];
 $defaultStatus = null;
+if ($statusOptions !== []) {
 foreach ($preferredDefaults as $preferred) {
-    if (array_key_exists($preferred, $statusOptions)) {
+        if (!array_key_exists($preferred, $statusOptions)) {
+            continue;
+        }
+
+        if (($statusStats[$preferred]['total_orders'] ?? 0) > 0) {
         $defaultStatus = $preferred;
         break;
     }
-}
+
+        if ($defaultStatus === null) {
+            $defaultStatus = $preferred;
+        }
+    }
+
+    if ($defaultStatus !== null && ($statusStats[$defaultStatus]['total_orders'] ?? 0) === 0) {
+        foreach ($statusOptions as $statusValue => $_label) {
+            if (($statusStats[$statusValue]['total_orders'] ?? 0) > 0) {
+                $defaultStatus = $statusValue;
+                break;
+            }
+        }
+    }
+
 if ($defaultStatus === null) {
     $defaultStatus = array_key_first($statusOptions);
 }
+}
 
-$statusParam = $_GET['status'] ?? $defaultStatus;
+$statusParam = $_GET['status'] ?? null;
 if (is_array($statusParam)) {
     $statusParam = reset($statusParam);
 }
@@ -67,6 +105,10 @@ if ($statusParam !== null && $statusParam !== '') {
             $selectedStatus = $candidate;
         }
     }
+}
+
+if ($selectedStatus === null && $statusOptions !== []) {
+    $selectedStatus = array_key_first($statusOptions);
 }
 
 $selectedStatuses = $selectedStatus !== null ? [$selectedStatus] : [];
