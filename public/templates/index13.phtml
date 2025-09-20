@@ -23,6 +23,8 @@ $summaryMetrics = [
     ['label' => 'Частота заказов', 'key' => 'avg_frequency', 'format' => 'decimal'],
 ];
 $chartConfigs = [];
+$currentPeriodDays = $start->diff($end)->days + 1;
+$previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
 ?>
 <!doctype html>
 <html lang="ru">
@@ -59,6 +61,27 @@ $chartConfigs = [];
         </div>
     </form>
 
+    <div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-1">Текущий период</h6>
+                    <strong><?=$start->format('d.m.Y')?> — <?=$end->format('d.m.Y')?></strong>
+                    <div class="text-muted small">Длительность: <?=$currentPeriodDays?> дн.</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small mb-1">Предыдущий период</h6>
+                    <strong><?=$prevStart->format('d.m.Y')?> — <?=$prevEnd->format('d.m.Y')?></strong>
+                    <div class="text-muted small">Длительность: <?=$previousPeriodDays?> дн.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-4 g-3 mb-4">
         <?php foreach ($summaryMetrics as $metric): ?>
             <?php
@@ -71,11 +94,15 @@ $chartConfigs = [];
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
                         <h6><?=htmlspecialchars($metric['label'])?></h6>
-                        <strong><?=$formatValue($currentValue, $metric['format'])?></strong><br>
-                        <small class="<?=MarketingDashboardFormatter::deltaClass($delta)?>">
+                        <strong><?=$formatValue($currentValue, $metric['format'])?></strong>
+                        <div class="text-muted small mt-2">
+                            <div>Текущий: <?=$start->format('d.m.Y')?> — <?=$end->format('d.m.Y')?></div>
+                            <div>Предыдущий: <?=$prevStart->format('d.m.Y')?> — <?=$prevEnd->format('d.m.Y')?></div>
+                        </div>
+                        <div class="small <?=MarketingDashboardFormatter::deltaClass($delta)?> mt-2">
                             Было: <?=$formatValue($previousValue, $metric['format'])?>
                             (<?=MarketingDashboardFormatter::formatDelta($delta)?>)
-                        </small>
+                        </div>
                     </div>
                 </div>
             </div>

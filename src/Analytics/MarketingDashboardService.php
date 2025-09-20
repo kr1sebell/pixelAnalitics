@@ -39,12 +39,12 @@ class MarketingDashboardService
                 COUNT(DISTINCT o.source_user_id) AS total_customers,
 
                 COUNT(DISTINCT CASE
-                    WHEN u.first_order_at BETWEEN ?s AND ?s
+                    WHEN DATE(u.first_order_at) BETWEEN ?s AND ?s
                     THEN o.source_user_id END
                 ) AS new_customers,
 
                 COUNT(DISTINCT CASE
-                    WHEN u.first_order_at < ?s
+                    WHEN DATE(u.first_order_at) < ?s OR u.first_order_at IS NULL
                     THEN o.source_user_id END
                 ) AS repeat_customers,
 
@@ -99,11 +99,11 @@ class MarketingDashboardService
                 COUNT(DISTINCT o.source_user_id) AS total_customers,
                 ROUND(SUM(o.total_sum)/NULLIF(COUNT(o.id),0),2) AS avg_receipt,
                 COUNT(DISTINCT CASE
-                    WHEN u.first_order_at BETWEEN ?s AND ?s
+                    WHEN DATE(u.first_order_at) BETWEEN ?s AND ?s
                     THEN o.source_user_id END
                 ) AS new_customers,
                 COUNT(DISTINCT CASE
-                    WHEN u.first_order_at < ?s
+                    WHEN DATE(u.first_order_at) < ?s OR u.first_order_at IS NULL
                     THEN o.source_user_id END
                 ) AS repeat_customers,
                 COALESCE(ROUND(COUNT(o.id)/NULLIF(COUNT(DISTINCT o.source_user_id),0),2),0) AS avg_frequency
