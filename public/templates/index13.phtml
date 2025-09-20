@@ -95,10 +95,7 @@ $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
                     <div class="card-body">
                         <h6><?=htmlspecialchars($metric['label'])?></h6>
                         <strong><?=$formatValue($currentValue, $metric['format'])?></strong>
-                        <div class="text-muted small mt-2">
-                            <div>Текущий: <?=$start->format('d.m.Y')?> — <?=$end->format('d.m.Y')?></div>
-                            <div>Предыдущий: <?=$prevStart->format('d.m.Y')?> — <?=$prevEnd->format('d.m.Y')?></div>
-                        </div>
+
                         <div class="small <?=MarketingDashboardFormatter::deltaClass($delta)?> mt-2">
                             Было: <?=$formatValue($previousValue, $metric['format'])?>
                             (<?=MarketingDashboardFormatter::formatDelta($delta)?>)
