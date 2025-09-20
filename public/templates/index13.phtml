@@ -27,6 +27,9 @@ $currentPeriodDays = $start->diff($end)->days + 1;
 $previousPeriodDays = $prevStart->diff($prevEnd)->days + 1;
 $selectedStatusValue = isset($selectedStatuses[0]) ? (int) $selectedStatuses[0] : null;
 $positiveDeltaIsGood = $selectedStatusValue !== 3;
+$selectedStatusStats = $selectedStatusValue !== null
+    ? ($statusStats[$selectedStatusValue] ?? ['total_orders' => 0, 'total_revenue' => 0.0])
+    : ['total_orders' => 0, 'total_revenue' => 0.0];
 ?>
 <!doctype html>
 <html lang="ru">
@@ -46,6 +49,8 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
         .summary-chart { position: relative; height: 120px; }
         .summary-chart canvas { max-height: 120px; }
         .status-select-group { gap: 0.75rem; }
+        .status-select-group .form-check { align-items: flex-start; }
+        .status-select-group .status-meta { display:block; font-size:0.78rem; color:#6c757d; }
     </style>
 </head>
 <body class="bg-light p-3">
@@ -65,11 +70,18 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
             <label class="form-label d-block">Статус заказов</label>
             <div class="d-flex flex-wrap status-select-group">
                 <?php foreach ($statusOptions as $statusValue => $statusLabel): ?>
-                    <?php $statusId = 'status-' . $statusValue; ?>
+                    <?php
+                    $statusId = 'status-' . $statusValue;
+                    $stats = $statusStats[$statusValue] ?? ['total_orders' => 0, 'total_revenue' => 0.0];
+                    ?>
                     <div class="form-check form-check-inline">
                         <input class="form-check-input" type="radio" name="status" value="<?=htmlspecialchars((string) $statusValue)?>" id="<?=htmlspecialchars($statusId)?>" <?=$selectedStatusValue === (int) $statusValue ? 'checked' : ''?>>
                         <label class="form-check-label" for="<?=htmlspecialchars($statusId)?>">
-                            <?=htmlspecialchars($statusLabel)?>
+                            <span><?=htmlspecialchars($statusLabel)?></span>
+                            <span class="status-meta">
+                                <?=number_format((float) ($stats['total_revenue'] ?? 0), 0, ',', ' ')?> ₽ ·
+                                <?=number_format((int) ($stats['total_orders'] ?? 0), 0, ',', ' ')?> заказов
+                            </span>
                         </label>
                     </div>
                 <?php endforeach; ?>
@@ -85,9 +97,13 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
         <div class="mb-4">
             <div class="d-flex flex-wrap align-items-center gap-2">
                 <span class="text-muted small">Выбран статус:</span>
-                <span class="badge bg-secondary">
-                    <?=htmlspecialchars($statusOptions[$selectedStatusValue] ?? ('Статус #' . $selectedStatusValue))?>
-                </span>
+            <span class="badge bg-secondary">
+                <?=htmlspecialchars($statusOptions[$selectedStatusValue] ?? ('Статус #' . $selectedStatusValue))?>
+            </span>
+            <span class="text-muted small">
+                <?=number_format((int) ($selectedStatusStats['total_orders'] ?? 0), 0, ',', ' ')?> заказов ·
+                <?=number_format((float) ($selectedStatusStats['total_revenue'] ?? 0), 0, ',', ' ')?> ₽
+            </span>
                 </div>
         </div>
     <?php endif; ?>
@@ -152,9 +168,16 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
     <ul class="nav nav-tabs" id="segmentTabs" role="tablist">
         <?php $first = true; foreach ($allMetrics as $dim => $block): ?>
             <li class="nav-item" role="presentation">
-                <a class="nav-link <?=$first ? 'active' : ''?>" id="tab-<?=$dim?>" data-bs-toggle="tab" href="#pane-<?=$dim?>" role="tab" aria-controls="pane-<?=$dim?>" aria-selected="<?=$first ? 'true' : 'false'?>">
+                <button
+                    class="nav-link <?=$first ? 'active' : ''?>"
+                    id="tab-<?=$dim?>"
+                    data-bs-toggle="tab"
+                    data-bs-target="#pane-<?=$dim?>"
+                    type="button"
+                    role="tab"
+                >
                     <?=htmlspecialchars($dimensionList[$dim]['label'])?>
-                </a>
+                </button>
             </li>
             <?php $first = false; endforeach; ?>
     </ul>
@@ -303,6 +326,13 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
                             </div>
                         </div>
                         <?php endforeach; ?>
+                    <?php if (empty($block['current'])): ?>
+                        <div class="col-12">
+                            <div class="alert alert-info mb-0">
+                                Нет данных по этому сегменту для выбранного статуса и периода.
+                            </div>
+                        </div>
+                    <?php endif; ?>
                     </div>
             </div>
             <?php $first = false; endforeach; ?>
@@ -341,7 +371,6 @@ $positiveDeltaIsGood = $selectedStatusValue !== 3;
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
                     tooltip: {
