@@ -9,6 +9,8 @@ class DataSyncService
     private SafeMySQL $analytics;
     private array $productCache = [];
     private array $cityCache = [];
+    private array $addressCache = [];
+    private array $affiliateCache = [];
 
     public function __construct(SafeMySQL $source, SafeMySQL $analytics)
     {
@@ -114,6 +116,9 @@ class DataSyncService
             $orderNumber = $this->calculateOrderNumber($order['id_user'], $orderDatetime);
         }
 
+        $orderType = $this->determineOrderType($order);
+        [$latitude, $longitude] = $this->resolveCoordinates($order, $orderType);
+
         $data = [
             'source_order_id' => (int) $order['id'],
             'source_user_id' => (int) $order['id_user'],
@@ -121,17 +126,116 @@ class DataSyncService
             'order_datetime' => $orderDatetime,
             'status' => (int) $order['status'],
             'payment_type' => (int) $order['type'],
+            'order_type' => $orderType,
             'total_sum' => (float) $order['summa'],
             'total_sum_discounted' => isset($order['sales']) ? (float) $order['sales'] : null,
             'total_items' => $this->calculateTotalItems($order),
             'city_id' => $order['city_id'] !== null ? (int) $order['city_id'] : null,
             'city_name' => $this->getCityName($order['city_id'] ?? null),
+            'latitude' => $latitude,
+            'longitude' => $longitude,
             'repeat_order' => $orderNumber > 1 ? 1 : 0,
             'order_number' => $orderNumber,
             'weekday' => (int) date('N', strtotime($orderDate)),
         ];
 
         $this->analytics->insertOrUpdate('analytics_orders', $data, $data);
+    }
+
+    private function determineOrderType(array $order): ?string
+    {
+        if (!empty($order['id_address']) && (int) $order['id_address'] > 0) {
+            return 'delivery';
+        }
+
+        if (!empty($order['id_affiliate']) && (int) $order['id_affiliate'] > 0) {
+            return 'pickup';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function resolveCoordinates(array $order, ?string $orderType): array
+    {
+        if ($orderType === 'delivery' && !empty($order['id_address'])) {
+            return $this->getAddressCoordinates((int) $order['id_address']);
+        }
+
+        if ($orderType === 'pickup' && !empty($order['id_affiliate'])) {
+            return $this->getAffiliateCoordinates((int) $order['id_affiliate']);
+        }
+
+        return [null, null];
+    }
+
+    /**
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function getAddressCoordinates(int $addressId): array
+    {
+        if ($addressId <= 0) {
+            return [null, null];
+        }
+
+        if (!array_key_exists($addressId, $this->addressCache)) {
+            $row = $this->source->getRow(
+                'SELECT GEO_1, GEO_2 FROM adres WHERE id = ?i',
+                [$addressId]
+            );
+
+            $this->addressCache[$addressId] = $this->extractCoordinates($row['GEO_1'] ?? null, $row['GEO_2'] ?? null);
+        }
+
+        return $this->addressCache[$addressId];
+    }
+
+    /**
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function getAffiliateCoordinates(int $affiliateId): array
+    {
+        if ($affiliateId <= 0) {
+            return [null, null];
+        }
+
+        if (!array_key_exists($affiliateId, $this->affiliateCache)) {
+            $row = $this->source->getRow(
+                'SELECT GEO_1, GEO_2 FROM points_order WHERE id = ?i',
+                [$affiliateId]
+            );
+
+            $this->affiliateCache[$affiliateId] = $this->extractCoordinates($row['GEO_1'] ?? null, $row['GEO_2'] ?? null);
+        }
+
+        return $this->affiliateCache[$affiliateId];
+    }
+
+    /**
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function extractCoordinates($latitude, $longitude): array
+    {
+        $lat = $this->normalizeCoordinate($latitude);
+        $lng = $this->normalizeCoordinate($longitude);
+
+        return [$lat, $lng];
+    }
+
+    private function normalizeCoordinate($value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        return (float) $value;
     }
 
     private function normalizeDate(string $rawDate): string
