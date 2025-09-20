@@ -220,7 +220,7 @@ class MarketingDashboardService
 
     /**
      * @param array<int, int> $statuses
-     * @return array{sql: string, params: array<int, array<int, int>>}
+     * @return array{0: string, 1: array<int, mixed>}
      */
     private function buildStatusClause(string $alias, array $statuses): array
     {
@@ -228,13 +228,10 @@ class MarketingDashboardService
         sort($clean);
 
         if ($clean === []) {
-            return ['sql' => '', 'params' => []];
+            return ['', []];
         }
 
-        return [
-            'sql' => sprintf(' AND %s.status IN (?a)', $alias),
-            'params' => [$clean],
-        ];
+        return [sprintf(' AND %s.status IN (?a)', $alias), [$clean]];
     }
 
     private function resolveField(string $dimension): string
