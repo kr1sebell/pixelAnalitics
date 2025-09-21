@@ -9,6 +9,9 @@ class DataSyncService
     private SafeMySQL $analytics;
     private array $productCache = [];
     private array $cityCache = [];
+    private array $addressCache = [];
+    private array $affiliateCache = [];
+    private array $affiliateIdByOrderCache = [];
 
     public function __construct(SafeMySQL $source, SafeMySQL $analytics)
     {
@@ -16,14 +19,41 @@ class DataSyncService
         $this->analytics = $analytics;
     }
 
-    public function sync(): void
+    public function sync(bool $full = false): void
     {
-        $lastSync = $this->getLastSync('orders');
-        $orders = $this->fetchOrders($lastSync);
+    $lastSync   = $full ? null : $this->getLastSync('orders');
         $maxUpdated = $lastSync ? strtotime($lastSync) : null;
+
+    $limit  = 1000;
+    $lastId = 0;
+
+    // если хотим продолжить с последнего обработанного заказа (только для full)
+    if ($full) {
+        echo "Full select active\n";
+        $value = $this->analytics->getOne('SELECT MAX(source_order_id) FROM analytics_orders');
+        if ($value === false || $value === null) {
+            echo "Query вернул пусто\n";
+        } else {
+            echo "MAX(source_order_id) = " . $value . "\n";
+        }
+        $lastId = (int) $value;
+
+    }
+
+    do {
+        echo "LastId Start = ".$lastId."\n";
+        $orders = $this->fetchOrders($lastSync, $full, $limit, $lastId);
+        if (!$orders) {
+            break;
+        }
+
         foreach ($orders as $order) {
             $this->upsertOrder($order);
             $this->syncOrderItems($order['id']);
+
+            $lastId = (int)$order['id']; // обновляем последний id заказа
+//            echo "ResetLastId = ".$lastId."\n";
+
             if (!empty($order['updated_at'])) {
                 $orderUpdated = strtotime($order['updated_at']);
                 if ($maxUpdated === null || $orderUpdated > $maxUpdated) {
@@ -32,6 +62,7 @@ class DataSyncService
             }
         }
 
+        // юзеров тоже обрабатываем батчами
         $userIds = array_unique(array_column($orders, 'id_user'));
         if ($userIds) {
             $users = $this->fetchUsers($userIds);
@@ -40,12 +71,17 @@ class DataSyncService
             }
         }
 
-        if ($maxUpdated) {
+        echo "Processed up to order_id $lastId\n";
+
+    } while ($orders);
+
+    // lastSync обновляем только если это не полный прогон
+    if (!$full && $maxUpdated) {
             $this->setLastSync('orders', date('Y-m-d H:i:s', $maxUpdated));
         }
     }
 
-    private function fetchOrders(?string $lastSync, bool $full = false): array
+    private function fetchOrdersBatch(int $offset, int $limit, bool $full = false, ?string $lastSync = null): array
     {
         $sql = "SELECT * FROM zakazy WHERE deleted = 0 AND status IN (1,6,0,3)";
         $params = [];
@@ -55,14 +91,38 @@ class DataSyncService
             $params[] = $lastSync;
         }
 
-        $orders = $this->source->getAll($sql, $params);
+        // сортируем по возрастанию id (старые → новые)
+        $sql .= " ORDER BY id ASC LIMIT ?i OFFSET ?i";
+        $params[] = $limit;
+        $params[] = $offset;
 
-        // Лог в консоль
-        echo "Fetched " . count($orders) . " orders from source\n";
+        return $this->source->getAll($sql, ...$params);
+    }
+
+    private function fetchOrders(?string $lastSync, bool $full = false, int $limit = 1000, int $lastId = 0): array
+    {
+        $sql = "SELECT * FROM zakazy WHERE deleted = 0 AND status IN (1,6,0,3)";
+        $params = [];
+
+        if (!$full && $lastSync) {
+            $sql .= " AND updated_at > ?s";
+            $params[] = $lastSync;
+        }
+
+        if ($lastId !== null) {
+            $sql .= " AND id > ?i";
+            $params[] = $lastId;
+        }
+
+    $sql .= " ORDER BY id ASC LIMIT ?i";
+    $params[] = $limit;
+
+    $orders = $this->source->getAll($sql, $params);
+
         if ($orders) {
             $minDate = min(array_column($orders, 'date'));
             $maxDate = max(array_column($orders, 'date'));
-            echo "Orders date range: $minDate → $maxDate\n";
+        echo "Fetched " . count($orders) . " orders: $minDate → $maxDate\n";
         }
 
     return $orders;
@@ -114,6 +174,9 @@ class DataSyncService
             $orderNumber = $this->calculateOrderNumber($order['id_user'], $orderDatetime);
         }
 
+        $orderType = $this->determineOrderType($order);
+        [$latitude, $longitude] = $this->resolveCoordinates($order, $orderType);
+
         $data = [
             'source_order_id' => (int) $order['id'],
             'source_user_id' => (int) $order['id_user'],
@@ -121,17 +184,138 @@ class DataSyncService
             'order_datetime' => $orderDatetime,
             'status' => (int) $order['status'],
             'payment_type' => (int) $order['type'],
+            'order_type' => $orderType,
             'total_sum' => (float) $order['summa'],
             'total_sum_discounted' => isset($order['sales']) ? (float) $order['sales'] : null,
             'total_items' => $this->calculateTotalItems($order),
             'city_id' => $order['city_id'] !== null ? (int) $order['city_id'] : null,
             'city_name' => $this->getCityName($order['city_id'] ?? null),
+            'latitude' => $latitude,
+            'longitude' => $longitude,
             'repeat_order' => $orderNumber > 1 ? 1 : 0,
             'order_number' => $orderNumber,
             'weekday' => (int) date('N', strtotime($orderDate)),
         ];
 
         $this->analytics->insertOrUpdate('analytics_orders', $data, $data);
+    }
+
+    private function determineOrderType(array $order): string
+    {
+        return ((int)($order['id_address'] ?? 0) > 0) ? 'delivery' : 'pickup';
+    }
+
+
+    private function getAffiliateIdByOrderId(int $orderId): ?int
+    {
+        if (isset($this->affiliateIdByOrderCache[$orderId])) {
+            return $this->affiliateIdByOrderCache[$orderId];
+        }
+
+        // Берём последний/актуальный id_affiliate для заказа (если записей несколько)
+        $row = $this->source->getRow(
+            'SELECT id_affiliate 
+           FROM status_in_FP_order 
+          WHERE id_zakaz = ?i 
+          ORDER BY id DESC 
+          LIMIT 1',
+            [$orderId]
+        );
+
+        $affId = isset($row['id_affiliate']) ? (int)$row['id_affiliate'] : null;
+        if ($affId > 0) {
+            $this->affiliateIdByOrderCache[$orderId] = $affId;
+            return $affId;
+        }
+        return null;
+    }
+
+    /**
+     * @return array{0:?float,1:?float}
+     */
+    private function resolveCoordinates(array $order, string $orderType): array
+    {
+        if ($orderType === 'delivery') {
+            $addrId = (int)($order['id_address'] ?? 0);
+            if ($addrId > 0) {
+                return $this->getAddressCoordinates($addrId);
+            }
+            return [null, null];
+        }
+
+        // pickup — сначала узнаём id_affiliate по id заказа
+        $affId = $this->getAffiliateIdByOrderId((int)$order['id']);
+        if ($affId !== null && $affId > 0) {
+            return $this->getAffiliateCoordinates($affId);
+        }
+        return [null, null];
+    }
+
+    /**
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function getAddressCoordinates(int $addressId): array
+    {
+        if ($addressId <= 0) {
+            return [null, null];
+        }
+
+        if (!array_key_exists($addressId, $this->addressCache)) {
+        $row = $this->source->getRow(
+            'SELECT GEO_1, GEO_2 FROM adres WHERE id = ?i',
+            [$addressId]
+            );
+
+            $this->addressCache[$addressId] = $this->extractCoordinates($row['GEO_1'] ?? null, $row['GEO_2'] ?? null);
+        }
+
+        return $this->addressCache[$addressId];
+    }
+
+    /**
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function getAffiliateCoordinates(int $affiliateId): array
+    {
+        if ($affiliateId <= 0) {
+            return [null, null];
+        }
+
+        if (!array_key_exists($affiliateId, $this->affiliateCache)) {
+        $row = $this->source->getRow(
+            'SELECT GEO_1, GEO_2 FROM points_order WHERE id = ?i',
+                [$affiliateId]
+        );
+
+            $this->affiliateCache[$affiliateId] = $this->extractCoordinates($row['GEO_1'] ?? null, $row['GEO_2'] ?? null);
+        }
+
+        return $this->affiliateCache[$affiliateId];
+    }
+
+    /**
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function extractCoordinates($latitude, $longitude): array
+    {
+        $lat = $this->normalizeCoordinate($latitude);
+        $lng = $this->normalizeCoordinate($longitude);
+
+        return [$lat, $lng];
+    }
+
+    private function normalizeCoordinate($value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        return (float) $value;
     }
 
     private function normalizeDate(string $rawDate): string

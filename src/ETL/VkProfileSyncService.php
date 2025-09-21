@@ -22,12 +22,24 @@ class VkProfileSyncService
             return;
         }
 
-        $profiles = $this->client->fetchProfiles($vkIds);
-        foreach ($profiles as $profile) {
+        $chunks = array_chunk($vkIds, 999);
+        foreach ($chunks as $chunk) {
+            // чтобы не словить rate limit, ставим небольшую паузу
+            usleep(380000); // 0.38 сек, даёт ~3 запроса/сек
+
+            $profiles = $this->client->fetchProfiles($chunk);
+            foreach ($profiles as $profile) {
+                $this->processProfile($profile);
+            }
+        }
+    }
+
+    private function processProfile(array $profile): void
+    {
             $vkId = (int) $profile['id'];
-            $city = isset($profile['city']['title']) ? $profile['city']['title'] : null;
-            $occupation = isset($profile['occupation']['name']) ? $profile['occupation']['name'] : null;
-            $sourceUserId = $this->getSourceUserIdByVk($vkId);
+        $city = $profile['city']['title'] ?? null;
+        $occupation = $profile['occupation']['name'] ?? null;
+        $sourceUserId = $this->getSourceUserIdByVk($vkId);
 
             $data = [
                 'vk_id' => $vkId,
@@ -36,7 +48,7 @@ class VkProfileSyncService
                 'sex' => $profile['sex'] ?? null,
                 'bdate' => $profile['bdate'] ?? null,
                 'city' => $city,
-                'country' => isset($profile['country']['title']) ? $profile['country']['title'] : null,
+        'country' => $profile['country']['title'] ?? null,
                 'occupation' => $occupation,
                 'domain' => $profile['domain'] ?? null,
                 'photo_url' => $profile['photo_max'] ?? null,
@@ -63,8 +75,11 @@ class VkProfileSyncService
                     array_merge(['source_user_id' => $sourceUserId], $userPayload),
                     $userPayload
                 );
+
+                $this->analytics->query(
+                    "UPDATE analytics_users SET vk_synced = 1 WHERE vk_id = " . (int)$vkId
+                );
             }
-        }
     }
 
     private function getSourceUserIdByVk(int $vkId): ?int

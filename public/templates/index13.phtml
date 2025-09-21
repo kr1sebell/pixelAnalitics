@@ -51,6 +51,44 @@ $selectedStatusStats = $selectedStatusValue !== null
         .status-select-group { gap: 0.75rem; }
         .status-select-group .form-check { align-items: flex-start; }
         .status-select-group .status-meta { display:block; font-size:0.78rem; color:#6c757d; }
+        .table-compact td, .table-compact th { padding: .2rem .3rem; font-size: 0.85rem; }
+.metric-main { font-size: 1rem; font-weight: 600; }
+.metric-secondary { font-size: 0.8rem; color: #666; }
+.metric-delta { font-size: 0.75rem; }
+
+.segment-chart-wrapper {
+    max-width: 600px;
+    margin: 0 auto;
+}
+.segment-chart-wrapper canvas {
+    width: 100% !important;
+    height: auto !important;
+}
+    /* кастом легенды */
+    .chartjs-legend ul {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        padding-left: 0;
+        list-style: none;
+        margin: 0;
+    }
+    .chartjs-legend li {
+        margin: 4px 12px;
+        font-size: 0.85rem;
+        white-space: nowrap;
+    }
+
+    .segment-chart-wrapper {
+    max-width: 1200px; /* или сколько нужно */
+    margin: 0 auto;
+}
+
+.segment-chart-wrapper canvas {
+    width: 100% !important;
+    height: 500px !important; /* фиксированная высота */
+}
+
     </style>
 </head>
 <body class="bg-light p-3">
@@ -200,6 +238,38 @@ $selectedStatusStats = $selectedStatusValue !== null
             ];
             ?>
             <div class="tab-pane fade <?=$first ? 'show active' : ''?>" id="pane-<?=$dim?>" role="tabpanel">
+
+            <?php
+    // собираем данные для сводной диаграммы по сегменту
+    $chartAllId = 'chart_all_' . $dim;
+    $segmentLabels = [];
+    $segmentValues = [];
+    foreach ($block['current'] as $row) {
+        $segmentLabels[] = MarketingDashboardFormatter::formatDimensionValue($dim, $row['dimension_value'], $cityMap);
+        $segmentValues[] = (float) ($row['total_revenue'] ?? 0);
+    }
+    if ($segmentLabels && $segmentValues) {
+        $chartConfigs[] = [
+            'id' => $chartAllId,
+            'labels' => $segmentLabels,
+            'dataset' => $segmentValues,
+            'label' => 'Выручка по сегменту',
+            'format' => 'currency',
+            'type' => 'pie',
+        ];
+    }
+    ?>
+
+<?php if ($segmentLabels): ?>
+<div class="mb-3 d-flex justify-content-center">
+    <div class="segment-chart-wrapper">
+        <h6 class="text-center mb-2">Распределение по сегменту (<?=$dimensionList[$dim]['label']?>)</h6>
+        <canvas id="<?=$chartAllId?>" height="400"></canvas>
+        <div id="legend-<?=$chartAllId?>" class="chartjs-legend mt-2"></div>
+    </div>
+</div>
+<?php endif; ?>
+
                     <div class="row g-3">
                         <?php foreach ($block['current'] as $metricRow): ?>
                         <?php
@@ -306,21 +376,44 @@ $selectedStatusStats = $selectedStatusValue !== null
                                     <canvas id="<?=htmlspecialchars($chartId)?>" height="120"></canvas>
 
                                     <?php if (!empty($block['products'][$value] ?? [])): ?>
-                                        <div class="mt-3">
-                                            <h6>Топ товары</h6>
-                                            <div class="row">
-                                                <?php foreach ($block['products'][$value] as $product): ?>
-                                                    <div class="col-6">
-                                                        <div class="product-card">
-                                                            <div class="product-title"><?=htmlspecialchars($product['title'])?></div>
-                                                            <div class="product-meta">
-                                                                <?=$product['quantity']?> шт · <?=number_format((float) $product['revenue'], 0, ',', ' ')?> ₽
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
+                <div class="accordion mt-3" id="productsAccordion-<?=$dim?>-<?=$value?>">
+                    <div class="accordion-item">
+                        <h6 class="accordion-header" id="heading-<?=$dim?>-<?=$value?>">
+                            <button class="accordion-button collapsed btn-sm" type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#collapse-<?=$dim?>-<?=$value?>"
+                                    aria-expanded="false"
+                                    aria-controls="collapse-<?=$dim?>-<?=$value?>">
+                                Топ товары
+                            </button>
+                        </h6>
+                        <div id="collapse-<?=$dim?>-<?=$value?>" class="accordion-collapse collapse"
+                             aria-labelledby="heading-<?=$dim?>-<?=$value?>"
+                             data-bs-parent="#productsAccordion-<?=$dim?>-<?=$value?>">
+                            <div class="accordion-body">
+                                    <table class="table table-sm table-striped align-middle mb-0" style="font-size: 10px;">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Товар</th>
+                                                <th class="text-end">Кол-во</th>
+                                                <th class="text-end">Выручка</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        <?php foreach ($block['products'][$value] as $product): ?>
+                                            <tr>
+                                                <td><?=htmlspecialchars($product['title'])?></td>
+                                                <td class="text-end"><?=$product['quantity']?></td>
+                                                <td class="text-end"><?=number_format((float) $product['revenue'], 0, ',', ' ')?> ₽</td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+
                                         </div>
+                                    </div>
+                                </div>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -349,10 +442,48 @@ $selectedStatusStats = $selectedStatusValue !== null
 
     chartConfigs.forEach((config) => {
         const canvas = document.getElementById(config.id);
-        if (!canvas) {
-            return;
-        }
+        if (!canvas) return;
 
+        // уничтожаем старый график, если он уже есть
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) {
+        existingChart.destroy();
+    }
+
+    // если это общая диаграмма по сегменту (pie)
+    if (config.labels && config.dataset) {
+        new Chart(canvas, {
+            type: config.type || 'pie',
+            data: {
+                labels: config.labels,
+                datasets: [{
+                    label: config.label || 'Показатель',
+                    data: config.dataset,
+                    backgroundColor: config.labels.map((_, i) =>
+                        `hsl(${i * 40 % 360}, 70%, 60%)` // авто-цвета для сегментов
+                    ),
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio:true,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const value = context.parsed || 0;
+                                return `${context.label}: ${formatters.currency.format(value)}`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        return; // для pie дальше не идём
+    }
+
+    // иначе это карточка (bar-сравнение текущий/предыдущий)
         const formatKey = config.format && formatters[config.format] ? config.format : 'number';
         const formatter = formatters[formatKey];
         const datasetLabel = config.label || 'Показатель';

@@ -12,11 +12,17 @@ $source = $connectionManager->getSource();
 $analytics = $connectionManager->getAnalytics();
 
 $sync = new DataSyncService($source, $analytics);
-$sync->sync();
+$full = in_array('--full', $argv, true);
+//$sync->sync($full);
 
 echo "Orders and users synchronized." . PHP_EOL;
 
-$vkIds = $analytics->getCol('SELECT DISTINCT vk_id FROM analytics_users WHERE vk_id IS NOT NULL AND vk_id <> 0');
+$vkIds = $analytics->getCol(
+    'SELECT vk_id FROM analytics_users 
+     WHERE vk_id IS NOT NULL AND vk_id <> 0 AND vk_synced = 0
+     LIMIT 5000'
+);
+
 if ($vkIds) {
     $vkClient = new VkApiClient($config['vk']);
     $vkSync = new VkProfileSyncService($analytics, $vkClient);
