@@ -2,6 +2,7 @@
 require __DIR__ . '/../bootstrap.php';
 
 use Analytics\MarketingDashboardService;
+use Analytics\MarketingDashboardFormatter; // добавляем сюда!
 use Database\ConnectionManager;
 use Segmentation\DimensionConfig;
 
@@ -129,5 +130,196 @@ foreach (array_keys($dimensionList) as $dimension) {
 
 $totals = $dashboardService->getTotals($start, $end, $selectedStatuses);
 $totalsPrev = $dashboardService->getTotals($prevStart, $prevEnd, $selectedStatuses);
+
+
+// === строим профили из $allMetrics ===
+//$profiles = [];
+//
+//// список измерений, которые учитываем
+//$dimensions = ['gender','age_group','city_id','occupation','weekday','payment_type'];
+//
+//foreach ($allMetrics as $dim => $block) {
+//    // игнорим измерения, которых нет в списке
+//    if (!in_array($dim, $dimensions, true)) {
+//        continue;
+//    }
+//    foreach ($block['current'] as $row) {
+//        $value = MarketingDashboardFormatter::formatDimensionValue($dim, $row['dimension_value'], $cityMap);
+//        $keyParts = [];
+//        foreach ($dimensions as $d) {
+//            // если есть метрика для этого измерения
+//            if ($d === $dim) {
+//                $keyParts[] = $value;
+//            } else {
+//                $keyParts[] = null; // placeholder
+//            }
+//        }
+//        $profileKey = implode(' / ', $keyParts);
+//
+//        if (!isset($profiles[$profileKey])) {
+//            $profiles[$profileKey] = [
+//                'gender' => $dim === 'gender' ? $value : '—',
+//                'age_group' => $dim === 'age_group' ? $value : '—',
+//                'city' => $dim === 'city_id' ? $value : '—',
+//                'occupation' => $dim === 'occupation' ? $value : '—',
+//                'weekday' => $dim === 'weekday' ? $value : '—',
+//                'payment_type' => $dim === 'payment_type' ? $value : '—',
+//                'total_revenue' => 0,
+//                'total_orders' => 0,
+//                'total_customers' => 0,
+//            ];
+//        }
+//
+//        $profiles[$profileKey]['total_revenue'] += (float)($row['total_revenue'] ?? 0);
+//        $profiles[$profileKey]['total_orders']  += (int)($row['total_orders'] ?? 0);
+//        $profiles[$profileKey]['total_customers'] += (int)($row['total_customers'] ?? 0);
+//    }
+//}
+//
+//// сортируем по выручке
+//usort($profiles, fn($a, $b) => $b['total_revenue'] <=> $a['total_revenue']);
+//
+//// оставляем ТОП-3
+//$topProfiles = array_slice($profiles, 0, 3);
+
+
+//Новый вариант
+//$topProfiles = [];
+//
+//// копия метрик для работы
+//$metricsCopy = $allMetrics;
+//
+//for ($i = 1; $i <= 3; $i++) {
+//    $profile = [
+//        'gender' => '—',
+//        'age_group' => '—',
+//        'city' => '—',
+//        'occupation' => '—',
+//        'weekday' => '—',
+//        'payment_type' => '—',
+//        'total_revenue' => 0,
+//        'total_orders' => 0,
+//        'total_customers' => 0,
+//    ];
+//
+//    foreach ($metricsCopy as $dim => $block) {
+//        if (empty($block['current'])) {
+//            continue;
+//        }
+//
+//        // ищем максимальный сегмент по выручке
+//        $topRow = null;
+//        foreach ($block['current'] as $row) {
+//            if ($topRow === null || ($row['total_revenue'] ?? 0) > ($topRow['total_revenue'] ?? 0)) {
+//                $topRow = $row;
+//            }
+//        }
+//
+//        if ($topRow) {
+//            $profile[$dim] = MarketingDashboardFormatter::formatDimensionValue($dim, $topRow['dimension_value'], $cityMap);
+//            $profile['total_revenue'] += (float) ($topRow['total_revenue'] ?? 0);
+//            $profile['total_orders'] += (int) ($topRow['total_orders'] ?? 0);
+//            $profile['total_customers'] += (int) ($topRow['total_customers'] ?? 0);
+//        }
+//    }
+//
+//    $topProfiles[] = $profile;
+//
+//    // чтобы следующий портрет был другим, вырезаем выбранные сегменты
+//    foreach ($metricsCopy as $dim => &$block) {
+//        $block['current'] = array_filter($block['current'], function($row) use ($profile, $dim, $cityMap) {
+//            $label = MarketingDashboardFormatter::formatDimensionValue($dim, $row['dimension_value'], $cityMap);
+//            return $label !== $profile[$dim];
+//        });
+//    }
+//    unset($block);
+//}
+
+//Без Не определено
+$topProfiles = [];
+
+// копия метрик для работы
+$metricsCopy = $allMetrics;
+
+for ($i = 1; $i <= 3; $i++) {
+    $profile = [
+        'gender' => '—',
+        'age_group' => '—',
+        'city' => '—',
+        'occupation' => '—',
+        'weekday' => '—',
+        'payment_type' => '—',
+        'total_revenue' => 0,
+        'total_orders' => 0,
+        'total_customers' => 0,
+    ];
+
+    foreach ($metricsCopy as $dim => $block) {
+        if (empty($block['current'])) {
+            continue;
+        }
+
+        // фильтруем "Не определено"
+        $filtered = array_filter($block['current'], function($row) use ($dim, $cityMap) {
+            $label = MarketingDashboardFormatter::formatDimensionValue($dim, $row['dimension_value'], $cityMap);
+            return $label !== 'Не определено';
+        });
+
+        if (empty($filtered)) {
+            continue;
+        }
+
+        // ищем максимальный сегмент по выручке
+        $topRow = null;
+        foreach ($filtered as $row) {
+            if ($topRow === null || ($row['total_revenue'] ?? 0) > ($topRow['total_revenue'] ?? 0)) {
+                $topRow = $row;
+            }
+        }
+
+        if ($topRow) {
+            $profile[$dim] = MarketingDashboardFormatter::formatDimensionValue($dim, $topRow['dimension_value'], $cityMap);
+            $profile['total_revenue'] += (float) ($topRow['total_revenue'] ?? 0);
+            $profile['total_orders'] += (int) ($topRow['total_orders'] ?? 0);
+            $profile['total_customers'] += (int) ($topRow['total_customers'] ?? 0);
+        }
+    }
+
+    // если в профиле не набралось данных — пропускаем
+    if ($profile['total_revenue'] > 0) {
+        $topProfiles[] = $profile;
+    }
+
+    // убираем использованные сегменты, чтобы в следующем портрете были другие
+    foreach ($metricsCopy as $dim => &$block) {
+        $block['current'] = array_filter($block['current'], function($row) use ($profile, $dim, $cityMap) {
+            $label = MarketingDashboardFormatter::formatDimensionValue($dim, $row['dimension_value'], $cityMap);
+            return $label !== $profile[$dim] && $label !== 'Не определено';
+        });
+    }
+    unset($block);
+}
+
+
+
+$allSegments = [];
+foreach ($allMetrics as $dim => $block) {
+    foreach ($block['current'] as $row) {
+        $allSegments[] = [
+            'dimension' => $dim,
+            'label' => MarketingDashboardFormatter::formatDimensionValue($dim, $row['dimension_value'], $cityMap),
+            'total_revenue' => (float)($row['total_revenue'] ?? 0),
+            'total_orders' => (int)($row['total_orders'] ?? 0),
+            'total_customers' => (int)($row['total_customers'] ?? 0),
+        ];
+    }
+}
+
+// сортируем по выручке
+usort($allSegments, fn($a, $b) => $b['total_revenue'] <=> $a['total_revenue']);
+
+// берём ТОП-3
+$topSegments = array_slice($allSegments, 0, 3);
+
 
 require __DIR__ . '/templates/index13.phtml';

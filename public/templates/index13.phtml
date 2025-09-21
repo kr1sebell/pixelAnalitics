@@ -218,6 +218,13 @@ $selectedStatusStats = $selectedStatusValue !== null
                 </button>
             </li>
             <?php $first = false; endforeach; ?>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-topca"
+                        data-bs-toggle="tab" data-bs-target="#pane-topca"
+                        type="button" role="tab">
+                    ТОП ЦА
+                </button>
+            </li>
     </ul>
 
     <div class="tab-content mt-3">
@@ -429,6 +436,78 @@ $selectedStatusStats = $selectedStatusValue !== null
                     </div>
             </div>
             <?php $first = false; endforeach; ?>
+            <div class="tab-pane fade" id="pane-topca" role="tabpanel">
+                <h5 class="mb-3">ТОП-3 целевых аудитории - собрано из всех сегментов</h5>
+<!--                <div class="row g-3">-->
+<!--                    --><?php //foreach ($topProfiles as $i => $profile): ?>
+<!--                    <div class="col-lg-4 col-md-6">-->
+<!--                        <div class="card shadow-sm h-100">-->
+<!--                            <div class="card-body">-->
+<!--                                <h6 class="mb-2">Портрет #--><?//=($i+1)?><!--</h6>-->
+<!--                                <ul class="list-unstyled mb-2">-->
+<!--                                    <li>Пол: <strong>--><?//=$profile['gender']?><!--</strong></li>-->
+<!--                                    <li>Возраст: <strong>--><?//=$profile['age_group']?><!--</strong></li>-->
+<!--                                    <li>Город: <strong>--><?//=$profile['city']?><!--</strong></li>-->
+<!--                                    <li>Профессия: <strong>--><?//=$profile['occupation']?><!--</strong></li>-->
+<!--                                    <li>День недели заказа: <strong>--><?//=$profile['weekday']?><!--</strong></li>-->
+<!--                                    <li>Тип оплаты: <strong>--><?//=$profile['payment_type']?><!--</strong></li>-->
+<!--                                </ul>-->
+<!--                                <div>-->
+<!--                                    Выручка: <strong>--><?//=number_format($profile['total_revenue'], 0, ',', ' ')?><!-- ₽</strong><br>-->
+<!--                                    Заказы: <strong>--><?//=$profile['total_orders']?><!--</strong><br>-->
+<!--                                    Клиенты: <strong>--><?//=$profile['total_customers']?><!--</strong>-->
+<!--                                </div>-->
+<!--                            </div>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                    --><?php //endforeach; ?>
+<!--                </div>-->
+<!--                <div class="row g-3">-->
+<!--        --><?php //foreach ($topSegments as $i => $seg): ?>
+<!--            <div class="col-lg-4 col-md-6">-->
+<!--                <div class="card shadow-sm h-100">-->
+<!--                    <div class="card-body">-->
+<!--                        <h6 class="mb-2">Портрет #--><?//=($i+1)?><!--</h6>-->
+<!--                        <ul class="list-unstyled mb-2">-->
+<!--                            <li>Сегмент: <strong>--><?//=htmlspecialchars($dimensionList[$seg['dimension']]['label'])?><!--</strong></li>-->
+<!--                            <li>Значение: <strong>--><?//=htmlspecialchars($seg['label'])?><!--</strong></li>-->
+<!--                        </ul>-->
+<!--                        <div>-->
+<!--                            Выручка: <strong>--><?//=number_format($seg['total_revenue'], 0, ',', ' ')?><!-- ₽</strong><br>-->
+<!--                            Заказы: <strong>--><?//=$seg['total_orders']?><!--</strong><br>-->
+<!--                            Клиенты: <strong>--><?//=$seg['total_customers']?><!--</strong>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        --><?php //endforeach; ?>
+<!--    </div>-->
+
+    <div class="row g-3">
+        <?php foreach ($topProfiles as $i => $profile): ?>
+            <div class="col-lg-4 col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="mb-2">Портрет #<?=($i+1)?></h6>
+                        <ul class="list-unstyled mb-2">
+                            <li>Пол: <strong><?=htmlspecialchars($profile['gender'])?></strong></li>
+                            <li>Возраст: <strong><?=htmlspecialchars($profile['age_group'])?></strong></li>
+                            <li>Город: <strong><?=htmlspecialchars($profile['city'])?></strong></li>
+                            <li>Профессия: <strong><?=htmlspecialchars($profile['occupation'])?></strong></li>
+                            <li>День недели заказа: <strong><?=htmlspecialchars($profile['weekday'])?></strong></li>
+                            <li>Тип оплаты: <strong><?=htmlspecialchars($profile['payment_type'])?></strong></li>
+                        </ul>
+                        <div>
+                            Выручка: <strong><?=number_format($profile['total_revenue'], 0, ',', ' ')?> ₽</strong><br>
+                            Заказы: <strong><?=$profile['total_orders']?></strong><br>
+                            Клиенты: <strong><?=$profile['total_customers']?></strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    </div>
+            </div>
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>

@@ -19,8 +19,7 @@ echo "Orders and users synchronized." . PHP_EOL;
 
 $vkIds = $analytics->getCol(
     'SELECT vk_id FROM analytics_users 
-     WHERE vk_id IS NOT NULL AND vk_id <> 0 AND vk_synced = 0
-     LIMIT 5000'
+     WHERE vk_id IS NOT NULL AND vk_id <> 0 AND vk_synced = 0'
 );
 
 if ($vkIds) {
