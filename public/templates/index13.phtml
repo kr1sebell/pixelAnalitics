@@ -531,6 +531,8 @@ $selectedStatusStats = $selectedStatusValue !== null
     <button class="btn btn-sm btn-outline-success" onclick="showGrid('delivery')">Сетка: доставка</button>
     <button class="btn btn-sm btn-outline-success" onclick="showGrid('pickup')">Сетка: самовывоз</button>
 
+<button class="btn btn-sm btn-outline-dark" onclick="enablePolygonMode()">Выбрать зону</button>
+
 </div>
 
 </div>
@@ -740,6 +742,106 @@ function showGrid(filterType = 'all') {
 }
 
 
+let zones = []; // [{ polygon, label }]
+let drawPolygon = null;
+let polygonLabel = null;
+
+function enablePolygonMode() {
+    // создаём новый пустой полигон
+    const newPolygon = new ymaps.Polygon([], {}, {
+        editorDrawingCursor: "crosshair",
+        editorMaxPoints: 50,
+        fillColor: '#00FF0055',
+        strokeColor: '#0000FF',
+        strokeWidth: 2
+    });
+
+    map.geoObjects.add(newPolygon);
+    newPolygon.editor.startDrawing();
+
+    const onEditorStateChange = () => {
+        if (!newPolygon.editor.state.get('drawing')) {
+            newPolygon.events.remove('editorstatechange', onEditorStateChange);
+
+            newPolygon.editor.stopDrawing();
+            newPolygon.editor.stopEditing();
+
+            calculatePolygonStats(newPolygon);
+        }
+    };
+    newPolygon.events.add('editorstatechange', onEditorStateChange);
+}
+
+function calculatePolygonStats(polygon) {
+    const geometry = polygon.geometry;
+    if (!geometry) return;
+
+    let totalOrders = 0;
+    let totalSum = 0;
+
+    ordersData.forEach(o => {
+        const lat = parseFloat(o.latitude);
+        const lon = parseFloat(o.longitude);
+        if (isNaN(lat) || isNaN(lon)) return;
+
+        if (geometry.contains([lat, lon])) {
+            const count = parseInt(o.order_count, 10) || 1;
+            const sum = parseFloat(o.total_sum) || 0;
+            totalOrders += count;
+            totalSum += sum;
+        }
+    });
+
+    const avgReceipt = totalOrders ? (totalSum / totalOrders) : 0;
+    const b = geometry.getBounds();
+    const center = b ? [(b[0][0] + b[1][0]) / 2, (b[0][1] + b[1][1]) / 2] : map.getCenter();
+
+    const label = new ymaps.Placemark(center, {
+        balloonContent: `
+            <b>Зона заказов</b><br>
+            Заказов: ${totalOrders}<br>
+            Сумма: ${totalSum.toFixed(0)} ₽<br>
+            Средний чек: ${avgReceipt.toFixed(0)} ₽
+        `,
+        iconCaption: `Заказов: ${totalOrders}`
+    }, {
+        preset: 'islands#violetIconWithCaption'
+    });
+
+    map.geoObjects.add(label);
+    label.balloon.open();
+
+    // Запоминаем связку "полигон + метка"
+    zones.push({ polygon, label });
+
+    // При закрытии балуна удаляем только свою зону
+    label.events.add('balloonclose', () => {
+        map.geoObjects.remove(label);
+        map.geoObjects.remove(polygon);
+        zones = zones.filter(z => z.label !== label);
+    });
+}
+
+// Универсальная очистка зоны
+function removeZone() {
+        if (polygonLabel) {
+            map.geoObjects.remove(polygonLabel);
+            polygonLabel = null;
+        }
+        if (drawPolygon) {
+        // гасим редактор, чтобы не осталось «серых кружков»
+        try {
+            drawPolygon.editor.stopDrawing();
+            drawPolygon.editor.stopEditing();
+        } catch (e) {}
+            map.geoObjects.remove(drawPolygon);
+            drawPolygon = null;
+}
+}
+
+
+
+
 function clearMap() {
     map.geoObjects.removeAll();
     if (heatmap) {
@@ -747,6 +849,7 @@ function clearMap() {
         heatmap = null;
     }
     markers = [];
+    zones = [];
 }
 </script>
 
