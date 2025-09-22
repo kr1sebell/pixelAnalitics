@@ -743,12 +743,10 @@ function showGrid(filterType = 'all') {
 
 
 let zones = []; // [{ polygon, label }]
-let drawPolygon = null;
-let polygonLabel = null;
 
 function enablePolygonMode() {
-    // создаём новый пустой полигон
-    const newPolygon = new ymaps.Polygon([], {}, {
+    // clearMap();
+    const draftPolygon = new ymaps.Polygon([], {}, {
         editorDrawingCursor: "crosshair",
         editorMaxPoints: 50,
         fillColor: '#00FF0055',
@@ -756,20 +754,34 @@ function enablePolygonMode() {
         strokeWidth: 2
     });
 
-    map.geoObjects.add(newPolygon);
-    newPolygon.editor.startDrawing();
+    map.geoObjects.add(draftPolygon);
+    draftPolygon.editor.startDrawing();
 
     const onEditorStateChange = () => {
-        if (!newPolygon.editor.state.get('drawing')) {
-            newPolygon.events.remove('editorstatechange', onEditorStateChange);
+        if (!draftPolygon.editor.state.get('drawing')) {
+            draftPolygon.events.remove('editorstatechange', onEditorStateChange);
 
-            newPolygon.editor.stopDrawing();
-            newPolygon.editor.stopEditing();
+            // геометрию сохраняем
+            const coords = draftPolygon.geometry.getCoordinates();
 
-            calculatePolygonStats(newPolygon);
+            // останавливаем и удаляем "черновик"
+            draftPolygon.editor.stopDrawing();
+            draftPolygon.editor.stopEditing();
+            map.geoObjects.remove(draftPolygon);
+
+            // создаём "чистый" полигон без редактора
+            const polygon = new ymaps.Polygon(coords, {}, {
+                fillColor: '#00FF0055',
+                strokeColor: '#0000FF',
+                strokeWidth: 2
+            });
+            map.geoObjects.add(polygon);
+
+            calculatePolygonStats(polygon);
         }
     };
-    newPolygon.events.add('editorstatechange', onEditorStateChange);
+
+    draftPolygon.events.add('editorstatechange', onEditorStateChange);
 }
 
 function calculatePolygonStats(polygon) {
@@ -814,43 +826,36 @@ function calculatePolygonStats(polygon) {
     // Запоминаем связку "полигон + метка"
     zones.push({ polygon, label });
 
-    // При закрытии балуна удаляем только свою зону
-    label.events.add('balloonclose', () => {
+    // Удаляем ЗОНУ только если пользователь сам закрыл балун (крестик).
+    label.balloon.events.add('userclose', () => {
         map.geoObjects.remove(label);
         map.geoObjects.remove(polygon);
         zones = zones.filter(z => z.label !== label);
     });
 }
 
-// Универсальная очистка зоны
-function removeZone() {
-        if (polygonLabel) {
-            map.geoObjects.remove(polygonLabel);
-            polygonLabel = null;
-        }
-        if (drawPolygon) {
-        // гасим редактор, чтобы не осталось «серых кружков»
-        try {
-            drawPolygon.editor.stopDrawing();
-            drawPolygon.editor.stopEditing();
-        } catch (e) {}
-            map.geoObjects.remove(drawPolygon);
-            drawPolygon = null;
-}
-}
-
-
-
-
+// ничего не трогаем у уже нарисованных зон
 function clearMap() {
-    map.geoObjects.removeAll();
+    // Убираем heatmap
     if (heatmap) {
         heatmap.setMap(null);
         heatmap = null;
     }
+
+    // Убираем маркеры
+    markers.forEach(m => map.geoObjects.remove(m));
     markers = [];
-    zones = [];
+
+    // Чистим все объекты кроме зон
+    map.geoObjects.each(obj => {
+        // Проверяем, не относится ли объект к зонам
+        const isZone = zones.some(z => z.polygon === obj || z.label === obj);
+        if (!isZone) {
+            map.geoObjects.remove(obj);
+        }
+    });
 }
+
 </script>
 
 
