@@ -39,4 +39,5 @@ return [
         'default_period_days' => getenv('SEGMENTATION_DEFAULT_PERIOD_DAYS') ?: 7,
         'lag_period_days'     => getenv('SEGMENTATION_LAG_PERIOD_DAYS') ?: 7,
     ],
+    'yandex_api_key' => getenv('yandex_api_key') ?: '0'
 ];

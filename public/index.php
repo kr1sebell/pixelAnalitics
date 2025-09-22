@@ -9,6 +9,8 @@ use Segmentation\DimensionConfig;
 $connectionManager = new ConnectionManager($config);
 $analytics = $connectionManager->getAnalytics();
 
+$yandexApiKey = $config['yandex_api_key'] ?? '';
+
 $dimensionList = DimensionConfig::list();
 $startParam = $_GET['start'] ?? (new DateTime('-30 days'))->format('Y-m-d');
 $endParam   = $_GET['end']   ?? (new DateTime())->format('Y-m-d');
@@ -320,6 +322,16 @@ usort($allSegments, fn($a, $b) => $b['total_revenue'] <=> $a['total_revenue']);
 
 // берём ТОП-3
 $topSegments = array_slice($allSegments, 0, 3);
+
+// ВАЖНО: добавляем выборку заказов для карты
+$ordersWithCoords = $dashboardService->getOrdersWithCoords($start, $end, $selectedStatuses);
+
+// отфильтровать мусор
+$ordersWithCoords = array_values(array_filter($ordersWithCoords, function ($o) {
+    return isset($o['latitude'], $o['longitude'])
+        && is_numeric($o['latitude'])
+        && is_numeric($o['longitude']);
+}));
 
 
 require __DIR__ . '/templates/index13.phtml';

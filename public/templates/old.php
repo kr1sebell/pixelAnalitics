@@ -604,24 +604,16 @@ function showHeatmap(filterType = 'all') {
     clearMap();
 
     ymaps.modules.require(['Heatmap'], function (Heatmap) {
-        const points = [];
-
-        ordersData
+        const points = ordersData
             .filter(o =>
                 (filterType === 'all' || o.order_type === filterType) &&
                 !isNaN(parseFloat(o.latitude)) &&
                 !isNaN(parseFloat(o.longitude))
             )
-            .forEach(o => {
-                const lat = parseFloat(o.latitude);
-                const lon = parseFloat(o.longitude);
-                const count = parseInt(o.order_count, 10) || 1;
-
-                // дублируем точку count раз
-                for (let i = 0; i < count; i++) {
-                    points.push([lat, lon]);
-                }
-            });
+            .map(o => ({
+                coordinates: [parseFloat(o.latitude), parseFloat(o.longitude)],
+                weight: o.order_count // используем количество заказов как вес
+            }));
 
         if (!points.length) {
             alert('Нет данных для тепловой карты');

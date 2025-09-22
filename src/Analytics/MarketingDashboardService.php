@@ -267,4 +267,33 @@ class MarketingDashboardService
 
         return self::DIMENSION_FIELD_MAP[$dimension];
     }
+
+    public function getOrdersWithCoords(DateTime $start, DateTime $end, array $statuses): array
+    {
+        $sql = "
+        SELECT 
+            ROUND(latitude, 5) as latitude,
+            ROUND(longitude, 5) as longitude,
+            order_type, 
+            COUNT(*) AS order_count,
+            SUM(total_sum) AS total_sum
+            FROM analytics_orders
+            WHERE order_datetime BETWEEN ?s AND ?s
+              AND status IN (?a)
+              AND latitude IS NOT NULL
+              AND longitude IS NOT NULL
+        GROUP BY ROUND(latitude, 5), ROUND(longitude, 5), order_type
+        ";
+
+        return $this->analytics->getAll(
+            $sql,
+            [
+                $start->format('Y-m-d 00:00:00'),
+                $end->format('Y-m-d 23:59:59'),
+                $statuses,
+            ]
+        );
+    }
+
+
 }
