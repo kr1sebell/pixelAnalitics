@@ -22,14 +22,15 @@ class VkProfileSyncService
             return;
         }
 
-        $chunks = array_chunk($vkIds, 999);
+        $chunks = array_chunk($vkIds, 990);
         foreach ($chunks as $chunk) {
             // чтобы не словить rate limit, ставим небольшую паузу
-            usleep(380000); // 0.38 сек, даёт ~3 запроса/сек
+            usleep(480000); // 0.38 сек, даёт ~3 запроса/сек
 
             $profiles = $this->client->fetchProfiles($chunk);
             foreach ($profiles as $profile) {
                 $this->processProfile($profile);
+                usleep(180000);
             }
         }
     }
@@ -79,6 +80,7 @@ class VkProfileSyncService
                 $this->analytics->query(
                     "UPDATE analytics_users SET vk_synced = 1 WHERE vk_id = " . (int)$vkId
                 );
+//                echo "VK юзер ".$vkId;
             }
     }
 
