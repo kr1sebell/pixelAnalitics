@@ -526,6 +526,11 @@ $selectedStatusStats = $selectedStatusValue !== null
     <button class="btn btn-sm btn-outline-danger" onclick="showHeatmap('all')">Тепловая карта: все</button>
     <button class="btn btn-sm btn-outline-danger" onclick="showHeatmap('delivery')">Тепловая карта: доставка</button>
     <button class="btn btn-sm btn-outline-danger" onclick="showHeatmap('pickup')">Тепловая карта: самовывоз</button>
+
+    <button class="btn btn-sm btn-outline-success" onclick="showGrid('all')">Сетка: все</button>
+    <button class="btn btn-sm btn-outline-success" onclick="showGrid('delivery')">Сетка: доставка</button>
+    <button class="btn btn-sm btn-outline-success" onclick="showGrid('pickup')">Сетка: самовывоз</button>
+
 </div>
 
 </div>
@@ -604,16 +609,24 @@ function showHeatmap(filterType = 'all') {
     clearMap();
 
     ymaps.modules.require(['Heatmap'], function (Heatmap) {
-        const points = ordersData
+        const points = [];
+
+        ordersData
             .filter(o =>
                 (filterType === 'all' || o.order_type === filterType) &&
                 !isNaN(parseFloat(o.latitude)) &&
                 !isNaN(parseFloat(o.longitude))
             )
-            .map(o => ({
-                coordinates: [parseFloat(o.latitude), parseFloat(o.longitude)],
-                weight: o.order_count // используем количество заказов как вес
-            }));
+            .forEach(o => {
+                const lat = parseFloat(o.latitude);
+                const lon = parseFloat(o.longitude);
+                const count = parseInt(o.order_count, 10) || 1;
+
+                // дублируем точку count раз
+                for (let i = 0; i < count; i++) {
+                    points.push([lat, lon]);
+                }
+            });
 
         if (!points.length) {
             alert('Нет данных для тепловой карты');
@@ -627,6 +640,53 @@ function showHeatmap(filterType = 'all') {
 
         heatmap.setMap(map);
     });
+}
+
+function showGrid(filterType = 'all') {
+    clearMap();
+
+    const bounds = map.getBounds(); // [[lat_sw, lon_sw], [lat_ne, lon_ne]]
+    const sw = bounds[0];
+    const ne = bounds[1];
+
+    const latStep = (ne[0] - sw[0]) / 20; // делим карту на 20 рядов
+    const lonStep = (ne[1] - sw[1]) / 20; // и 20 колонок
+
+    for (let lat = sw[0]; lat < ne[0]; lat += latStep) {
+        for (let lon = sw[1]; lon < ne[1]; lon += lonStep) {
+            // фильтруем заказы в ячейке
+            const ordersInCell = ordersData.filter(o => {
+                if (filterType !== 'all' && o.order_type !== filterType) return false;
+                const oLat = parseFloat(o.latitude);
+                const oLon = parseFloat(o.longitude);
+                return !isNaN(oLat) && !isNaN(oLon) &&
+                       oLat >= lat && oLat < lat + latStep &&
+                       oLon >= lon && oLon < lon + lonStep;
+            });
+
+            if (!ordersInCell.length) continue;
+
+            // считаем суммарное количество заказов в ячейке
+            const count = ordersInCell.reduce((s, o) => s + (parseInt(o.order_count) || 1), 0);
+
+            // подбираем прозрачность в зависимости от числа заказов
+            const opacity = Math.min(0.1 + count / 50, 0.8);
+
+            const rect = new ymaps.Rectangle(
+                [[lat, lon], [lat + latStep, lon + lonStep]],
+                {
+                    hintContent: `Заказов: ${count}`
+                },
+                {
+                    fillColor: `rgba(0, 128, 255, ${opacity})`,
+                stroke: false,
+                    fillOpacity: opacity
+                }
+            );
+
+            map.geoObjects.add(rect);
+        }
+    }
 }
 
 function clearMap() {

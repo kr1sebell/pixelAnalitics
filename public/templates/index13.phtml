@@ -526,6 +526,11 @@ $selectedStatusStats = $selectedStatusValue !== null
     <button class="btn btn-sm btn-outline-danger" onclick="showHeatmap('all')">Тепловая карта: все</button>
     <button class="btn btn-sm btn-outline-danger" onclick="showHeatmap('delivery')">Тепловая карта: доставка</button>
     <button class="btn btn-sm btn-outline-danger" onclick="showHeatmap('pickup')">Тепловая карта: самовывоз</button>
+
+    <button class="btn btn-sm btn-outline-success" onclick="showGrid('all')">Сетка: все</button>
+    <button class="btn btn-sm btn-outline-success" onclick="showGrid('delivery')">Сетка: доставка</button>
+    <button class="btn btn-sm btn-outline-success" onclick="showGrid('pickup')">Сетка: самовывоз</button>
+
 </div>
 
 </div>
@@ -636,6 +641,104 @@ function showHeatmap(filterType = 'all') {
         heatmap.setMap(map);
     });
 }
+
+function showGrid(filterType = 'all') {
+    clearMap();
+
+    const bounds = map.getBounds();
+    if (!bounds) return;
+
+    const sw = bounds[0]; // [lat, lon]
+    const ne = bounds[1]; // [lat, lon]
+
+    // Размер сетки — можно подправить
+    const ROWS = 25;
+    const COLS = 25;
+
+    const latSpan = ne[0] - sw[0];
+    const lonSpan = ne[1] - sw[1];
+    if (latSpan <= 0 || lonSpan <= 0) return;
+
+    const latStep = latSpan / ROWS;
+    const lonStep = lonSpan / COLS;
+
+    // 1) Собираем корзины (ячейки): ключ "r:c" -> count
+    const buckets = new Map();
+    let maxCount = 0;
+
+    for (const o of ordersData) {
+        if (filterType !== 'all' && o.order_type !== filterType) continue;
+
+        const lat = parseFloat(o.latitude);
+        const lon = parseFloat(o.longitude);
+        if (isNaN(lat) || isNaN(lon)) continue;
+
+        // игнорим точки вне текущих границ
+        if (lat < sw[0] || lat > ne[0] || lon < sw[1] || lon > ne[1]) continue;
+
+        // индекс строки/колонки
+        let r = Math.floor((lat - sw[0]) / latStep);
+        let c = Math.floor((lon - sw[1]) / lonStep);
+
+        // граничные случаи
+        if (r >= ROWS) r = ROWS - 1;
+        if (c >= COLS) c = COLS - 1;
+        if (r < 0 || c < 0) continue;
+
+        const key = `${r}:${c}`;
+        const inc = parseInt(o.order_count, 10) || 1; // считаем по количеству заказов
+        const next = (buckets.get(key) || 0) + inc;
+        buckets.set(key, next);
+        if (next > maxCount) maxCount = next;
+    }
+
+    if (buckets.size === 0) {
+        alert('Нет данных для сетки в текущих границах');
+        return;
+    }
+
+    // 2) Функции для цвета и прозрачности
+    // t в [0..1] -> #RRGGBB (зелёный -> красный)
+    const colorFromT = (t) => {
+        const r = Math.round(255 * t);
+        const g = Math.round(255 * (1 - t));
+        const b = 0;
+        const toHex = (x) => x.toString(16).padStart(2, '0');
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    };
+
+    // 3) Рисуем только занятые ячейки
+    const collection = new ymaps.GeoObjectCollection();
+
+    buckets.forEach((count, key) => {
+        const [rStr, cStr] = key.split(':');
+        const r = parseInt(rStr, 10);
+        const c = parseInt(cStr, 10);
+
+        const lat0 = sw[0] + r * latStep;
+        const lon0 = sw[1] + c * lonStep;
+
+        const t = maxCount ? (count / maxCount) : 0; // 0..1
+        const fillColor = colorFromT(t);
+        const fillOpacity = 0.35 + 0.45 * t; // 0.35..0.8
+
+        const rect = new ymaps.Rectangle(
+            [[lat0, lon0], [lat0 + latStep, lon0 + lonStep]],
+            { hintContent: `Заказов: ${count}` },
+            {
+                fillColor,          // #RRGGBB
+                fillOpacity,        // прозрачность
+                strokeWidth: 0,     // без обводки
+                // strokeOpacity: 0, // можно и так, если хочешь явно
+            }
+        );
+
+        collection.add(rect);
+    });
+
+    map.geoObjects.add(collection);
+}
+
 
 function clearMap() {
     map.geoObjects.removeAll();
